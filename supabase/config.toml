@@ -1,0 +1,2 @@
+[functions.monitor-jobs]
+verify_jwt = false
