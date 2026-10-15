@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Activity, ArrowRight, LockKeyhole } from "lucide-react";
 import { signIn } from "@/app/auth/actions";
 import { getAuthContext } from "@/lib/auth/session";
+import { canUseDevPreview } from "@/lib/auth/dev-preview";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -37,9 +39,13 @@ async function LoginContent({
           <p className="mt-1.5 text-sm text-slate-500">Private access for your client operations team.</p>
         </div>
         <form action={signIn} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          {error === "credentials" && (
+          {error && (
             <p role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-xs leading-5 text-red-700">
-              Sign-in failed. Check your email and password, or contact your workspace administrator.
+              {error === "credentials"
+                ? "Sign-in failed. Check your email and password, or contact your workspace administrator."
+                : error === "invite"
+                  ? "The invitation link is invalid, expired, or already used. Ask the workspace administrator to send a new invitation."
+                  : "Your sign-in link could not be completed. Ask the workspace administrator for help."}
             </p>
           )}
           <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">Work email</label>
@@ -71,6 +77,12 @@ async function LoginContent({
           <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">
             Access is invitation-only. Public registration is not available.
           </p>
+          {canUseDevPreview(process.env.NODE_ENV, process.env.DEV_PREVIEW_ENABLED) && (
+            <p className="mt-3 text-center text-[11px]">
+              <Link href="/dev-preview" className="font-semibold text-blue-700 hover:underline">Open local design preview</Link>
+              <span className="mt-1 block text-slate-400">Sample data only; no account or database access.</span>
+            </p>
+          )}
         </form>
       </div>
     </main>

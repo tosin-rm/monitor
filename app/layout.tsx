@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
+import { ThemeToggle } from "@/app/_components/theme-toggle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,9 +26,19 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-theme="light"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <head>
+        <Script id="monitor-theme-init" strategy="beforeInteractive">
+          {`try { var savedTheme = localStorage.getItem("monitor-theme"); document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light"; } catch { document.documentElement.dataset.theme = "light"; }`}
+        </Script>
+      </head>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <ThemeToggle />
+      </body>
     </html>
   );
 }

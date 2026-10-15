@@ -23,7 +23,7 @@ The worker reads environment variables supplied by its process manager. In produ
 
 1. Create a Supabase project and configure its database region and backups.
 2. Disable **Allow new users to sign up** in Supabase Auth. This application has no public registration flow.
-3. Add the production dashboard URL to the Auth redirect/site URL configuration. Enable email invitations and password setup according to the organization's Auth policy.
+3. Add the production dashboard URL to the Auth redirect/site URL configuration. Set `APP_BASE_URL` to the dashboard origin (for example `https://monitor.example.com`, not a `/login` URL), allow `/auth/callback`, and configure the Supabase **Invite user** email template to use the `token_hash` callback documented in [the user guide](./guide.md). Enable email invitations and password setup according to the organization's Auth policy.
 4. Review the SQL migrations in `supabase/migrations/` in order. Apply them to a new project using the Supabase CLI migration workflow or SQL editor after reviewing the target project. Do not run a destructive reset against a database with existing data.
 5. Confirm each migration completes, inspect the RLS policies/functions, and execute the cross-organization access tests in a dedicated database test project before onboarding production users.
 6. In Supabase Auth, invite the initial owner email configured as `BOOTSTRAP_OWNER_EMAIL`. The invited user signs in and completes the guarded `/setup` bootstrap. Bootstrap is atomic and succeeds only while the database has no organization.

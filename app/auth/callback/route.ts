@@ -12,16 +12,24 @@ function safeNextPath(value: string | null): string {
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  const tokenHash = request.nextUrl.searchParams.get("token_hash");
+  const type = request.nextUrl.searchParams.get("type");
   const next = safeNextPath(request.nextUrl.searchParams.get("next"));
-  if (!code) {
-    return NextResponse.redirect(new URL("/login?error=invite", appBaseUrl()));
-  }
+  const baseUrl = appBaseUrl();
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const authResult = code
+    ? await supabase.auth.exchangeCodeForSession(code)
+    : tokenHash && type === "invite"
+      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "invite" })
+      : null;
+  if (!authResult) {
+    return NextResponse.redirect(new URL("/login?error=invite", baseUrl));
+  }
+  const { error } = authResult;
   if (error) {
     console.error("Auth callback failed", { code: error.code ?? "auth_error" });
-    return NextResponse.redirect(new URL("/login?error=invite", appBaseUrl()));
+    return NextResponse.redirect(new URL("/login?error=invite", baseUrl));
   }
-  return NextResponse.redirect(new URL(next, appBaseUrl()));
+  return NextResponse.redirect(new URL(next, baseUrl));
 }

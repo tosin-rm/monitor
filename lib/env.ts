@@ -31,7 +31,21 @@ export function supabaseSecretKey(): string {
 }
 
 export function appBaseUrl(): string {
-  return read("APP_BASE_URL") ?? "http://localhost:3000";
+  const configured = read("APP_BASE_URL");
+  if (!configured && process.env.NODE_ENV === "production") {
+    throw new Error("APP_BASE_URL must be configured in production");
+  }
+  const value = configured ?? "http://localhost:3000";
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("APP_BASE_URL must be an absolute HTTP or HTTPS URL");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error("APP_BASE_URL must be an absolute HTTP or HTTPS URL without credentials");
+  }
+  return parsed.origin;
 }
 
 export function bootstrapOwnerEmail(): string | undefined {

@@ -22,9 +22,11 @@ export async function inviteMember(formData: FormData): Promise<void> {
   }
 
   const admin = createAdminClient();
+  const inviteRedirect = new URL("/auth/callback", appBaseUrl());
+  inviteRedirect.searchParams.set("next", "/set-password");
   const { data: invitation, error: inviteError } = await admin.auth.admin.inviteUserByEmail(
     parsedEmail.data,
-    { redirectTo: `${appBaseUrl()}/auth/callback?next=/set-password` },
+    { redirectTo: inviteRedirect.toString() },
   );
   if (inviteError || !invitation.user) {
     console.error("Team invitation failed", { code: inviteError?.code ?? "missing_user" });
