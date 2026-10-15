@@ -151,6 +151,7 @@ The worker does not currently run RDAP refreshes or an independent health-report
 - Create a test client, website, domain asset, manual expiry date, and HTTPS monitoring endpoint.
 - Confirm cross-organization reads and writes are denied using a separate test organization.
 - Call the authenticated expiry job and confirm the expected notification is queued exactly once, including on a second invocation.
+- Test an asset whose expiry falls one calendar month ahead and confirm the month-before email is queued for the configured recipient; check the notification history and delivery status.
 - Call the dispatcher and verify provider acceptance, then verify Resend delivery webhook handling and Telegram chat delivery with configured test accounts.
 - Change the endpoint to a controlled test server that returns failure, then success; verify two consecutive failures open one incident and recovery resolves it with one recovery notification.
 - Verify private-IP, metadata-IP, redirect-to-private-IP, DNS-rebinding, nonstandard-port, oversized-response, and timeout probes are blocked or bounded.

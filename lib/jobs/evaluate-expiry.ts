@@ -62,12 +62,16 @@ export function buildExpiryNotifications(options: {
     const title =
       reminder.kind === "expired"
         ? `${websiteName}: ${asset.asset_type} expired`
-        : `${websiteName}: ${asset.asset_type} expires in ${reminder.daysRemaining} day(s)`;
+        : reminder.calendarMonthBefore
+          ? `${websiteName}: ${asset.asset_type} expires in one calendar month`
+          : `${websiteName}: ${asset.asset_type} expires in ${reminder.daysRemaining} day(s)`;
     const text = [
       `Service: ${asset.service_name ?? asset.hostname ?? asset.asset_type}`,
       `Expiry date: ${asset.expiry_date}`,
       reminder.kind === "expired"
         ? `This service is ${Math.abs(reminder.daysRemaining)} day(s) past expiry.`
+        : reminder.calendarMonthBefore
+          ? "This is the one-calendar-month expiry reminder."
         : `Renew before ${asset.expiry_date}.`,
     ].join("\n");
     const payload: NotificationPayload = {

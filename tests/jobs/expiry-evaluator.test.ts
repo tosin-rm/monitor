@@ -42,6 +42,32 @@ describe("expiry evaluation queue payloads", () => {
     expect(first.map((row) => row.channel).sort()).toEqual(["email", "telegram"]);
   });
 
+  it("queues the calendar-month reminder to configured email recipients", () => {
+    const queued = buildExpiryNotifications({
+      assets: [{
+        id: "asset-month",
+        organization_id: "org-1",
+        website_id: "website-1",
+        asset_type: "ssl_certificate",
+        service_name: "Production certificate",
+        hostname: "example.com",
+        expiry_date: "2025-03-31",
+        renewal_status: "active",
+        active: true,
+      }],
+      settingsByOrg: new Map([["org-1", { ...settings, telegram_enabled: false }]]),
+      websitesById: new Map([["website-1", { name: "Example" }]]),
+      now: new Date("2025-02-28T12:00:00.000Z"),
+      timeZoneByOrg: new Map([["org-1", "UTC"]]),
+    });
+
+    expect(queued).toHaveLength(1);
+    expect(queued[0]?.channel).toBe("email");
+    expect(queued[0]?.recipient_reference).toBe("ops@example.com");
+    expect(queued[0]?.payload.title).toContain("expires in one calendar month");
+    expect(queued[0]?.payload.text).toContain("one-calendar-month expiry reminder");
+  });
+
   it("does not create queue records for unknown expiry dates or disabled channels", () => {
     const queued = buildExpiryNotifications({
       assets: [{

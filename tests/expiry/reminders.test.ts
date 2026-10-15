@@ -6,6 +6,7 @@ import {
   parseReminderIntervals,
   reminderDeduplicationKey,
 } from "@/lib/expiry/reminders";
+import { calendarMonthBeforeDate } from "@/lib/expiry/calendar-days";
 
 const intervals = {
   ...DEFAULT_REMINDER_INTERVALS,
@@ -29,6 +30,24 @@ describe("expiry reminder scheduling", () => {
       timeZone: "UTC",
       intervals,
     })).toEqual({ kind: "upcoming", intervalDays: 14, daysRemaining: 14 });
+  });
+
+  it("schedules a calendar-month reminder and clamps month-end dates", () => {
+    expect(calendarMonthBeforeDate("2025-03-31")).toBe("2025-02-28");
+    expect(calendarMonthBeforeDate("2024-03-31")).toBe("2024-02-29");
+    expect(() => calendarMonthBeforeDate("2025-02-31")).toThrow("Invalid ISO date");
+    expect(dueReminderForAsset({
+      assetType: "ssl_certificate",
+      expiryDate: "2025-03-31",
+      now: new Date("2025-02-28T12:00:00.000Z"),
+      timeZone: "UTC",
+      intervals,
+    })).toEqual({
+      kind: "upcoming",
+      intervalDays: 31,
+      daysRemaining: 31,
+      calendarMonthBefore: true,
+    });
   });
 
   it("does not schedule unknown or non-bucket dates and supports controlled expired follow-ups", () => {

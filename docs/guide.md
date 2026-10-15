@@ -204,7 +204,7 @@ If you cannot access a page or action, ask an owner/admin to confirm your role a
 
 ### Renewal and alert expectations
 
-The default expiry reminders are 30, 14, 7, 3, and 1 calendar day before domain/hosting expiry, and 14, 7, 3, and 1 day before certificate expiry. Expired follow-ups are controlled reminders after the first overdue day. Administrators can configure intervals.
+Every known expiry date also gets a reminder on the calendar date one month before expiry. This reminder is sent through enabled channels; email requires email notifications enabled, at least one verified recipient, and a working Resend configuration. The default additional reminders are 30, 14, 7, 3, and 1 calendar day before domain/hosting expiry, and 14, 7, 3, and 1 day before certificate expiry. Expired follow-ups are controlled reminders after the first overdue day. Administrators can configure the day-based intervals.
 
 Alerts depend on scheduled jobs being deployed and active, notification recipients being configured, and providers being reachable. A record in the dashboard is not itself proof that a reminder was sent or delivered. Check the notification history and current provider status.
 

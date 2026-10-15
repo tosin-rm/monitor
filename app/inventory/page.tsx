@@ -7,7 +7,7 @@ import { ConfirmSubmit } from "@/app/_components/confirm-submit";
 import { AssetFields } from "@/app/_components/record-fields";
 import { archiveAsset, confirmRenewal, updateAsset } from "@/app/websites/actions";
 import { can } from "@/lib/auth/roles";
-import { calendarDateInTimeZone, calendarDaysRemaining } from "@/lib/expiry/calendar-days";
+import { calendarDateInTimeZone, calendarDaysRemaining, calendarMonthBeforeDate } from "@/lib/expiry/calendar-days";
 import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -121,6 +121,7 @@ async function InventoryContent({ searchParams }: { searchParams: Promise<Query>
               <div className="flex min-w-0 flex-1 items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><ShieldCheck size={16} /></span><div className="min-w-0 flex-1"><Link href={`/websites/${asset.website_id}`} className="text-xs font-semibold text-slate-800 hover:text-blue-700">{title}</Link><p className="mt-1 truncate text-[10px] text-slate-400"><Link href={`/clients`} className="hover:underline">{relationName(website?.client) ?? "Client"}</Link> · <Link href={`/websites/${asset.website_id}`} className="hover:underline">{website?.name ?? "Website"}</Link> · {asset.asset_type.replaceAll("_", " ")}</p><p className="mt-1 truncate text-[10px] text-slate-500">{asset.provider_name ?? "Provider not recorded"}{asset.provider_account_reference ? ` · ${asset.provider_account_reference}` : ""}{asset.renewal_responsibility ? ` · Responsible: ${asset.renewal_responsibility}` : ""}</p></div></div>
               <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-[10px] xl:min-w-[280px]">
                 <span className="text-slate-400">Expiry</span><strong className={`font-semibold ${days !== null && days < 0 ? "text-red-700" : days !== null && days <= 14 ? "text-amber-700" : "text-slate-700"}`}>{asset.expiry_date ? `${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(`${asset.expiry_date}T12:00:00Z`))}${days! < 0 ? ` · ${Math.abs(days!)}d overdue` : ` · ${days}d`}` : "Unknown"}</strong>
+                <span className="text-slate-400">Reminder date (1 month before)</span><strong className="font-semibold text-slate-700">{asset.expiry_date && asset.renewal_status !== "cancelled" ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${calendarMonthBeforeDate(asset.expiry_date)}T12:00:00Z`)) : "Not scheduled"}</strong>
                 <span className="text-slate-400">Renewal status</span><strong className="font-semibold capitalize text-slate-700">{asset.renewal_status.replaceAll("_", " ")}</strong>
                 <span className="text-slate-400">Date source / confidence</span><strong className="font-semibold capitalize text-slate-700">{asset.date_source} / {asset.date_confidence ?? "unknown"}</strong>
                 <span className="text-slate-400">Last verified</span><strong className="font-semibold text-slate-700">{asset.last_verified_at ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(asset.last_verified_at)) : "Not verified"}</strong>

@@ -24,6 +24,31 @@ function parseIsoDate(isoDate: string): { year: number; month: number; day: numb
   };
 }
 
+export function calendarMonthBeforeDate(isoDate: string, months = 1): string {
+  if (!Number.isInteger(months) || months < 0) {
+    throw new Error("Months before must be a nonnegative integer");
+  }
+  const { year, month, day } = parseIsoDate(isoDate);
+  const parsedDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsedDate.getUTCFullYear() !== year ||
+    parsedDate.getUTCMonth() !== month - 1 ||
+    parsedDate.getUTCDate() !== day
+  ) {
+    throw new Error(`Invalid ISO date: ${isoDate}`);
+  }
+  const targetMonthIndex = year * 12 + month - 1 - months;
+  const targetYear = Math.floor(targetMonthIndex / 12);
+  const targetMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(day, daysInTargetMonth);
+  return [
+    String(targetYear).padStart(4, "0"),
+    String(targetMonth + 1).padStart(2, "0"),
+    String(targetDay).padStart(2, "0"),
+  ].join("-");
+}
+
 function utcMidnightFromParts(parts: { year: number; month: number; day: number }): number {
   return Date.UTC(parts.year, parts.month - 1, parts.day);
 }

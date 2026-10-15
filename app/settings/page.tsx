@@ -67,7 +67,7 @@ async function SettingsContent({ searchParams }: { searchParams: Promise<{ error
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex items-center gap-2"><BellRing size={17} className="text-amber-600" /><h2 className="text-sm font-bold text-slate-900">Reminder intervals</h2></div>
-        <p className="mt-1 text-[11px] text-slate-500">JSON arrays of calendar days before expiry; expired follow-ups are days past expiry after the first overdue day. Use nonnegative integers up to 365.</p>
+        <p className="mt-1 text-[11px] text-slate-500">A one-calendar-month reminder is also scheduled for every known expiry date. It uses enabled notification channels, including email recipients configured above. These JSON arrays control the additional day-based reminders; expired follow-ups are days past expiry after the first overdue day. Use nonnegative integers up to 365.</p>
         <label htmlFor="reminderIntervals" className="mb-1.5 mt-4 block text-[11px] font-semibold text-slate-700">Schedule configuration</label>
         <textarea id="reminderIntervals" name="reminderIntervals" rows={7} spellCheck={false} defaultValue={JSON.stringify(intervals, null, 2)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[11px] leading-5 text-slate-700 outline-none focus:border-blue-500" />
       </section>

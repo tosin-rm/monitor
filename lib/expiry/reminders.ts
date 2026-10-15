@@ -1,4 +1,9 @@
-import { calendarDaysRemaining, isUnknownExpiry } from "@/lib/expiry/calendar-days";
+import {
+  calendarDateInTimeZone,
+  calendarDaysRemaining,
+  calendarMonthBeforeDate,
+  isUnknownExpiry,
+} from "@/lib/expiry/calendar-days";
 
 export type ReminderAssetType = "domain" | "hosting" | "ssl_certificate" | "other";
 
@@ -43,6 +48,7 @@ export type DueReminder = {
   kind: "upcoming" | "expired";
   intervalDays: number;
   daysRemaining: number;
+  calendarMonthBefore?: boolean;
 };
 
 /**
@@ -68,6 +74,12 @@ export function dueReminderForAsset(options: {
       return { kind: "expired", intervalDays: daysExpired, daysRemaining };
     }
     return null;
+  }
+  if (
+    calendarDateInTimeZone(options.now, options.timeZone) ===
+    calendarMonthBeforeDate(options.expiryDate as string)
+  ) {
+    return { kind: "upcoming", intervalDays: daysRemaining, daysRemaining, calendarMonthBefore: true };
   }
   const upcoming =
     options.assetType === "ssl_certificate"
