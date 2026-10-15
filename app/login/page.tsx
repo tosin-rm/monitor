@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Activity, ArrowRight, LockKeyhole } from "lucide-react";
 import { signIn } from "@/app/auth/actions";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { canUseDevPreview } from "@/lib/auth/dev-preview";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -24,7 +24,7 @@ async function LoginContent({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (context) redirect(context.organizationId ? "/" : "/setup");
   const { error } = await searchParams;
 

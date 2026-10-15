@@ -2,10 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { connection } from "next/server";
 import { Activity, ArrowRight } from "lucide-react";
 import { signUp } from "@/app/auth/actions";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Create an account" };
 
@@ -24,8 +23,7 @@ async function SignupContent({
 }: {
   searchParams: Promise<{ error?: string; sent?: string }>;
 }) {
-  await connection();
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (context) redirect(context.organizationId ? "/" : "/setup");
   const { error, sent } = await searchParams;
 

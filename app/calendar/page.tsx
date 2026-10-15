@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { ArrowLeft, CalendarClock, ExternalLink } from "lucide-react";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { calendarDateInTimeZone, calendarDaysRemaining } from "@/lib/expiry/calendar-days";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,7 +14,7 @@ export default function CalendarPage() {
 }
 
 async function CalendarContent() {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const today = calendarDateInTimeZone(new Date(), context.timeZone);

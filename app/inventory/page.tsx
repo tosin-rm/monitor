@@ -8,7 +8,7 @@ import { AssetFields } from "@/app/_components/record-fields";
 import { archiveAsset, confirmRenewal, updateAsset } from "@/app/websites/actions";
 import { can } from "@/lib/auth/roles";
 import { calendarDateInTimeZone, calendarDaysRemaining } from "@/lib/expiry/calendar-days";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Infrastructure inventory" };
@@ -38,7 +38,7 @@ export default function InventoryPage(props: { searchParams: Promise<Query> }) {
 }
 
 async function InventoryContent({ searchParams }: { searchParams: Promise<Query> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const filters = await searchParams;

@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { signOut } from "@/app/auth/actions";
 import { can } from "@/lib/auth/roles";
-import { requireAuth } from "@/lib/auth/session";
+import { requireRequestAuth } from "@/lib/auth/session";
 import { calendarDateInTimeZone } from "@/lib/expiry/calendar-days";
 import { createClient } from "@/lib/supabase/server";
 
@@ -58,7 +58,7 @@ export default function Dashboard() {
 }
 
 async function DashboardContent() {
-  const context = await requireAuth();
+  const context = await requireRequestAuth();
   const supabase = await createClient();
   const organizationId = context.organizationId;
   const today = calendarDateInTimeZone(new Date(), context.timeZone);

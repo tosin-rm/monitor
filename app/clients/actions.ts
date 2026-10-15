@@ -37,7 +37,14 @@ export async function createClientRecord(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("clients")
-    .insert({ organization_id: context.organizationId, ...parsed.data })
+    .insert({
+      organization_id: context.organizationId,
+      name: parsed.data.name,
+      contact_name: parsed.data.contactName,
+      contact_email: parsed.data.contactEmail,
+      contact_phone: parsed.data.contactPhone,
+      notes: parsed.data.notes,
+    })
     .select("id")
     .single();
   if (error) {
@@ -59,7 +66,13 @@ export async function updateClientRecord(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("clients")
-    .update(parsed.data)
+    .update({
+      name: parsed.data.name,
+      contact_name: parsed.data.contactName,
+      contact_email: parsed.data.contactEmail,
+      contact_phone: parsed.data.contactPhone,
+      notes: parsed.data.notes,
+    })
     .eq("id", clientId)
     .eq("organization_id", context.organizationId)
     .select("id")

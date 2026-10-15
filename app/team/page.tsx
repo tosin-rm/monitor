@@ -6,7 +6,7 @@ import { Activity, ArrowLeft, MailPlus, Shield, UserRound, Users } from "lucide-
 import { changeMemberRole, inviteMember, removeMember } from "@/app/team/actions";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
 import { can, MEMBER_ROLES, parseRole } from "@/lib/auth/roles";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "Team members" };
@@ -26,7 +26,7 @@ async function TeamContent({
 }: {
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
 

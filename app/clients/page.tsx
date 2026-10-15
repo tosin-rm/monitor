@@ -6,7 +6,7 @@ import { ArrowLeft, Building2, Plus, Search } from "lucide-react";
 import { createClientRecord } from "@/app/clients/actions";
 import { ClientFields } from "@/app/_components/record-fields";
 import { can } from "@/lib/auth/roles";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Clients" };
@@ -16,7 +16,7 @@ export default function ClientsPage(props: { searchParams: Promise<{ q?: string;
 }
 
 async function ClientsContent({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; success?: string }> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const { q = "", error, success } = await searchParams;

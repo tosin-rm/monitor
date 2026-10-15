@@ -8,7 +8,7 @@ import { AssetFields, WebsiteFields } from "@/app/_components/record-fields";
 import { archiveAsset, archiveWebsite, confirmRenewal, createAsset, createMonitoringEndpoint, setMonitoringEndpoint, updateWebsite } from "@/app/websites/actions";
 import { can } from "@/lib/auth/roles";
 import { calendarDaysRemaining } from "@/lib/expiry/calendar-days";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Website details" };
@@ -18,7 +18,7 @@ export default function WebsiteDetailPage(props: { params: Promise<{ websiteId: 
 }
 
 async function WebsiteDetailContent({ params, searchParams }: { params: Promise<{ websiteId: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const [{ websiteId }, paramsResult] = await Promise.all([params, searchParams]);

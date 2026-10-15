@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Activity, ArrowLeft, CheckCircle2, CircleAlert } from "lucide-react";
 import { changeIncidentStatus } from "@/app/incidents/actions";
 import { can } from "@/lib/auth/roles";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Incidents" };
@@ -15,7 +15,7 @@ export default function IncidentsPage(props: { searchParams: Promise<{ error?: s
 }
 
 async function IncidentsContent({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const params = await searchParams;

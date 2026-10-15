@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, Bell, CheckCircle2, Mail, MessageCircle, RefreshCw } from "lucide-react";
 import { retryNotification } from "@/app/notifications/actions";
 import { can } from "@/lib/auth/roles";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Notifications" };
@@ -15,7 +15,7 @@ export default function NotificationsPage(props: { searchParams: Promise<{ error
 }
 
 async function NotificationsContent({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const { error, success } = await searchParams;

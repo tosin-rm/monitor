@@ -8,7 +8,7 @@ import { queueChannelTest, unlinkTelegramChat, updateNotificationSettings } from
 import { TelegramLinkForm } from "@/app/notifications/telegram-link-form";
 import { can } from "@/lib/auth/roles";
 import { parseReminderIntervals } from "@/lib/expiry/reminders";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Notification settings" };
@@ -18,7 +18,7 @@ export default function SettingsPage(props: { searchParams: Promise<{ error?: st
 }
 
 async function SettingsContent({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const { error, success } = await searchParams;

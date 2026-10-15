@@ -7,7 +7,7 @@ import { archiveClient, updateClientRecord } from "@/app/clients/actions";
 import { ClientFields } from "@/app/_components/record-fields";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
 import { can } from "@/lib/auth/roles";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuthContext } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Client details" };
@@ -17,7 +17,7 @@ export default function ClientDetailPage(props: { params: Promise<{ clientId: st
 }
 
 async function ClientDetailContent({ params, searchParams }: { params: Promise<{ clientId: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
-  const context = await getAuthContext();
+  const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const [{ clientId }, query] = await Promise.all([params, searchParams]);
