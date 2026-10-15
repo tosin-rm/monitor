@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { Activity, ShieldCheck } from "lucide-react";
 import { bootstrapOrganization } from "@/app/setup/actions";
 import { getAuthContext } from "@/lib/auth/session";
@@ -24,6 +25,7 @@ async function SetupContent({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  await connection();
   const context = await getAuthContext();
   if (!context) redirect("/login");
   if (context.organizationId) redirect("/");
