@@ -21,13 +21,13 @@ The worker reads environment variables supplied by its process manager. In produ
 
 ## Supabase project and migrations
 
-1. Create a Supabase project and configure its database region and backups.
-2. Disable **Allow new users to sign up** in Supabase Auth. This application has no public registration flow.
-3. Add the production dashboard URL to the Auth redirect/site URL configuration. Set `APP_BASE_URL` to the dashboard origin (for example `https://monitor.example.com`, not a `/login` URL), allow `/auth/callback`, and configure the Supabase **Invite user** email template to use the `token_hash` callback documented in [the user guide](./guide.md). Enable email invitations and password setup according to the organization's Auth policy.
-4. Review the SQL migrations in `supabase/migrations/` in order. Apply them to a new project using the Supabase CLI migration workflow or SQL editor after reviewing the target project. Do not run a destructive reset against a database with existing data.
-5. Confirm each migration completes, inspect the RLS policies/functions, and execute the cross-organization access tests in a dedicated database test project before onboarding production users.
-6. In Supabase Auth, invite the initial owner email configured as `BOOTSTRAP_OWNER_EMAIL`. The invited user signs in and completes the guarded `/setup` bootstrap. Bootstrap is atomic and succeeds only while the database has no organization.
-7. Invite subsequent members from the application's Team page. Verify owner/admin/member permissions with separate test accounts.
+1. Create a Supabase project and configure its database region and backups. Keep **Allow new users to sign up** disabled until the initial workspace and Owner are ready.
+2. Add the production dashboard URL to the Auth redirect/site URL configuration. Set `APP_BASE_URL` to the dashboard origin (for example `https://monitor.example.com`, not a `/login` URL), allow `/auth/callback`, and configure Supabase confirmation and invite emails to return through the callback. Use the invite `token_hash` template documented in [the user guide](./guide.md).
+3. Review the SQL migrations in `supabase/migrations/` in order. Apply them to a new project using the Supabase CLI migration workflow or SQL editor after reviewing the target project. Do not run a destructive reset against a database with existing data. Migration `0005_open_signup_membership.sql` must be applied before enabling public signup.
+4. Confirm each migration completes, inspect the RLS policies/functions, and execute the cross-organization access tests in a dedicated database test project.
+5. Create the initial Auth user for the email configured as `BOOTSTRAP_OWNER_EMAIL`: use **Authentication → Users → Invite user**, or **Add user → Create new user** if invitation email is rate-limited. The configured Owner signs in and completes the guarded `/setup` bootstrap. Bootstrap is atomic and succeeds only while the database has no organization. For direct creation, provide any temporary password securely and have the Owner replace it at `/set-password`.
+6. Verify the organization exists and the Owner can access the dashboard. Then enable **Allow new users to sign up** in Supabase Auth and deploy the app containing the public `/signup` page.
+7. Team members create accounts at `/signup` and confirm their email. The database attaches each new account to the single existing workspace as a `member`; it never accepts a role or organization from the signup form. Owners/Admins continue to be assigned only through trusted administration. Verify these flows and permissions with separate test accounts.
 
 Do not treat successful local TypeScript tests as evidence that migrations or RLS have been applied. This checkout has no connected database test environment.
 
@@ -158,8 +158,9 @@ The worker does not currently run RDAP refreshes or an independent health-report
 
 ## Troubleshooting
 
-- **Cannot sign in:** check Auth invitation status, redirect URLs, publishable key, and Supabase URL; do not enable open registration as a workaround.
-- **No organization after sign-in:** verify the signed-in address exactly matches `BOOTSTRAP_OWNER_EMAIL` and that no organization already exists. Bootstrap is first-owner-only.
+- **Cannot sign up:** confirm public signup is enabled in Supabase Auth, migration `0005_open_signup_membership.sql` is applied, and the confirmation redirect URL allows `/auth/callback`.
+- **Signup has no workspace:** confirm exactly one organization exists and that migration `0005_open_signup_membership.sql` is applied. New accounts receive only the `member` role.
+- **Initial Owner cannot create a workspace:** verify the signed-in address matches `BOOTSTRAP_OWNER_EMAIL` and the database has no organization. Bootstrap is first-owner-only.
 - **No scheduled reminders:** inspect Cron history, `net._http_response`, Edge Function logs, job route status, `job_runs`, `notification_settings`, and the asset's expiry/timezone. Verify Vault secret names and dashboard job secret alignment.
 - **Notification accepted but not delivered:** inspect the provider message reference, webhook endpoint configuration/signature secret, recipient verification, and provider event history. Retry only when the delivery outcome is known to be safe.
 - **Telegram setup fails:** ensure the user/group started the bot, the challenge has not expired, and the webhook secret matches the configured webhook.

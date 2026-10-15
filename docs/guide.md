@@ -6,7 +6,7 @@ This guide is for the people who build and operate Monitor, the internal team th
 
 Monitor is a private operations dashboard for keeping track of client websites, infrastructure expiry dates, uptime checks, incidents, and team notifications. It is intended for authorized members of the web development team.
 
-**Clients do not currently sign in to Monitor.** There is no client portal or public registration. Team members remain responsible for verifying renewal dates, contacting clients when a decision or payment is needed, and recording the outcome in the app.
+**Clients do not currently sign in to Monitor.** There is no client portal. Team members remain responsible for verifying renewal dates, contacting clients when a decision or payment is needed, and recording the outcome in the app.
 
 ## Guide for developers
 
@@ -66,13 +66,15 @@ Before production use, operators still need to apply and verify the migrations a
 
 ### Sign-in and roles
 
-Monitor is invitation-only. There is no public sign-up and there is no separate “developer” role in the application. A developer who needs to use the dashboard must be invited to the team and assigned the least-privileged role that supports their work:
+Team-member signup is open after the Owner has created the workspace and the operator enables new-user signup in Supabase Auth. Every self-registered account joins the single existing workspace as a **Member**; the signup form cannot select an organization or role. There is no separate “developer” role:
 
 - **Member:** view operational records and confirm renewals.
 - **Admin:** manage clients, websites, assets, monitoring, notification settings, and team membership.
 - **Owner:** admin permissions plus control over owner-level membership and the organization.
 
-Developers who need to change or deploy the software also need access to the source-code repository and deployment environment. That is separate from Monitor account access; being a repository developer does not automatically grant dashboard access or Supabase production credentials.
+Owners/Admins remain restricted assignments made through trusted administration; signing up never grants elevated privileges. Developers who need to change or deploy the software also need access to the source-code repository and deployment environment. That is separate from Monitor account access; being a repository developer does not automatically grant dashboard access or Supabase production credentials.
+
+Because signup is public, anyone who can complete Supabase Auth signup can view the team's operational data as a Member. Enable it only if that is acceptable for this workspace. Do not put production client data in the workspace before the team has reviewed this access model.
 
 #### First owner setup: novice step-by-step
 
@@ -111,25 +113,47 @@ This section assumes you are setting up a new Monitor installation. It separates
    ```
 
    The Site URL must be the Monitor website origin from Part A, step 6. Keep other email wording as you prefer, but don't change the link to just `/login` or to the Supabase dashboard. If an invite link verifies in Supabase and then lands at Monitor's login without a session, check this template first.
-8. **Apply the database migration files.** Open the project files in the repository and locate `supabase/migrations/`. In the Supabase dashboard, open **SQL Editor → New query**. Open `0001_foundation.sql` in your code editor, copy its contents into the SQL Editor, check that the correct Supabase project is selected, and run it. Repeat, one file at a time and in this order: `0002_private_auth.sql`, `0003_notification_outbox.sql`, `0004_incident_workflow.sql`. Wait for each file to finish successfully before running the next. If a file reports an error, stop and ask a developer to investigate; do not skip ahead or repeatedly run it without understanding the error. Never run these files against a project containing data unless a database operator has reviewed the migration and backup plan.
-9. **Turn off public sign-up.** In Supabase, open **Authentication → Settings** (sometimes shown as **Sign In / Providers**). Turn off the setting named **Allow new users to sign up** or equivalent. This prevents strangers from creating accounts. The Owner will still be invited by a project administrator.
+8. **Apply the database migration files.** Open the project files in the repository and locate `supabase/migrations/`. In the Supabase dashboard, open **SQL Editor → New query**. Open `0001_foundation.sql` in your code editor, copy its contents into the SQL Editor, check that the correct Supabase project is selected, and run it. Repeat, one file at a time and in this order: `0002_private_auth.sql`, `0003_notification_outbox.sql`, `0004_incident_workflow.sql`, then `0005_open_signup_membership.sql`. Keep public signup disabled until the workspace and Owner are set up below. Wait for each file to finish successfully before running the next. If a file reports an error, stop and ask a developer to investigate; do not skip ahead or repeatedly run it without understanding the error. Never run these files against a project containing data unless a database operator has reviewed the migration and backup plan.
+9. **Keep public sign-up disabled for now.** In Supabase, open **Authentication → Settings** (sometimes shown as **Sign In / Providers**). Leave **Allow new users to sign up** turned off until the workspace exists and the Owner has confirmed access. This avoids creating accounts that cannot yet join a workspace.
 10. **Redeploy after setting environment values.** In your hosting platform, redeploy/restart the dashboard so it starts with the new settings. Open the dashboard address in a browser. Seeing the Monitor sign-in page is a good initial check; the workspace is not created yet.
 11. **Check email invitations are enabled.** Supabase must be able to send Auth invitation emails. For a real team, configure Supabase's approved SMTP/email provider and sender. A project's default email service may have strict sending limits; do not assume invitations will reach the inbox until you test one.
 
-##### Part B — the first Owner accepts the invitation
+##### Part B — create the first Owner account
 
-11. **Invite the Owner from Supabase.** In the Supabase project, open **Authentication → Users** and choose **Invite user**. Enter exactly the address used for `BOOTSTRAP_OWNER_EMAIL` and send the invitation. Do this in Supabase, not on Monitor's Team page: there is no workspace yet, so Monitor has no team to manage.
-12. **The Owner opens the invitation on the right website.** They should open the newest invitation email and click its link in a browser. The address should briefly include Monitor's `/auth/callback` with `token_hash` and `type=invite`. The callback verifies that one-time token and creates the sign-in session. If they land immediately on `/login`, check the Supabase Invite user template from Part A, step 7 and the Site URL/allowed callback URL from step 6.
-13. **The Owner chooses a password.** Monitor should display **Set your password**. Enter a new password of at least 12 characters, enter it again in the confirmation field, and save it. The Owner should keep this password private and use a password manager. If the link has expired, the Supabase project administrator should send a new invitation.
-14. **The Owner creates the workspace.** After password setup, Monitor will ask them to create a workspace because their account is not yet part of one. Enter the team's organization/workspace name and its timezone. A timezone is an IANA name such as `Europe/London` or `America/New_York`; it controls how calendar expiry dates are interpreted. Select **Create workspace** once.
-15. **Confirm it worked.** The Owner should arrive at the dashboard. Open **Team** and check that the Owner's own email is listed with the Owner role. A dashboard with zero clients and websites is expected at this point; it means the workspace exists, not that sample records should be added.
+There are two ways to create the first Auth account. **If Supabase reports “email rate limit exceeded,” use Option 2.** It creates the account in the Supabase project without sending an invitation email. It does not enable public sign-up or create an app-side authentication bypass.
+
+**Option 1: email invitation**
+
+11. In Supabase, open **Authentication → Users → Invite user**. Enter exactly the address configured in `BOOTSTRAP_OWNER_EMAIL` and send the invite. This is done in Supabase because Monitor has no workspace or Team page yet.
+12. The Owner opens the newest invite email in a browser. The link should return to Monitor's `/auth/callback` with `token_hash` and `type=invite`; the app verifies the one-time link and creates the sign-in session.
+13. Monitor displays **Set your password**. The Owner chooses a private password of at least 12 characters, confirms it, and saves it. An expired or rate-limited invitation must not be repeatedly retried; use a fresh invite after the limit clears, or follow Option 2.
+
+**Option 2: create the user directly in Supabase (no invitation email)**
+
+11. In the Supabase Dashboard, make sure you have selected the correct project, then open **Authentication → Users**.
+12. Select **Add user** (sometimes labelled **Create user**) and choose **Create new user**, not **Invite user**.
+13. Enter the exact email address configured in `BOOTSTRAP_OWNER_EMAIL`.
+14. Create a strong, unique temporary password. If Supabase offers **Auto Confirm User**, **Confirm email**, or a similar option, turn it on. This marks the manually created account as verified so it can sign in without an email confirmation message. The exact wording may vary by Supabase Dashboard version.
+15. Select **Create user** and wait for Supabase to show that the account exists in the Users list. This uses the project's administrative dashboard operation; it does not send an invite email and should avoid the Auth email-send rate limit.
+16. Give the temporary password to the Owner only through a secure, private channel. Do not put it in this repository, an issue, or this chat. The Owner signs in at the deployed Monitor `/login` page using the created email and temporary password.
+17. Once signed in, the Owner can open `https://<your-monitor-host>/set-password` directly, choose a new private password of at least 12 characters, confirm it, and save. This replaces the temporary password. The Owner should not share either password with the developer.
+
+If Supabase does not show a create-user option or rejects the operation, stop and check that you are an authorized project administrator and selected the intended project. Do not expose a service-role key or enable public signup before the workspace and Owner are ready.
+
+**Continue after either option**
+
+18. If this is the first account and no organization exists yet, Monitor sends the Owner to **Workspace access**. They enter the organization name and timezone (an IANA name such as `Europe/London` or `America/New_York`) and select **Create workspace** once.
+19. The Owner should land on the dashboard. Open **Team** and confirm the Owner email and Owner role. An empty dashboard is expected initially.
+
+This first-owner bootstrap only works for the configured, signed-in `BOOTSTRAP_OWNER_EMAIL` while no organization exists. It cannot be repeated to grant access later.
 
 ##### Part C — give the developer and team their own access
 
-16. **Invite other people from Monitor.** The Owner opens **Team**, types a teammate's email, chooses a role, and sends the invitation. Choose Member for people who mainly view records and confirm renewals; choose Admin for people who manage records, settings, or team invitations. Only an Owner can grant Admin privileges. Do not make everyone an Admin by default.
-17. **Each teammate accepts their own invitation.** They open the invitation email, follow the link, set their own password, and sign in at the Monitor address. They should use their own account; do not share the Owner's login.
-18. **Give developers separate technical access if needed.** If a developer needs to edit or deploy the source code, grant access to the code repository and deployment platform separately. Dashboard Admin access does not automatically require production database keys. Share only the minimum access needed for their task.
-19. **Add real operational data only after access works.** The team can now create a client, add that client's websites, and add domain/hosting/certificate records. Record only expiry dates that have been verified. Configure notification delivery and the background jobs/worker before relying on automated alerts.
+16. **Enable member self-signup once the workspace is ready.** In Supabase Auth, enable **Allow new users to sign up**. Deploy the app containing `/signup`.
+17. **Teammates create their own accounts.** They visit `/signup`, enter their work email and a password, then confirm their email. Their account joins the existing workspace as a Member; they cannot choose another role during signup. Test with a separate account and verify that it cannot manage team roles.
+18. **Grant elevated roles only through trusted administration.** An Owner can promote a Member to Admin from **Team**. Do not share the Owner's login. Owners/Admins remain responsible for reviewing who should have access because any person able to sign up can see the workspace's operational data as a Member.
+19. **Give developers separate technical access if needed.** If a developer needs to edit or deploy the source code, grant access to the code repository and deployment platform separately. Dashboard Admin access does not automatically require production database keys. Share only the minimum access needed for their task.
+20. **Add real operational data only after access works.** The team can now create a client, add that client's websites, and add domain/hosting/certificate records. Record only expiry dates that have been verified. Configure notification delivery and the background jobs/worker before relying on automated alerts.
 
 **Stop here if you only added an email to `BOOTSTRAP_OWNER_EMAIL`.** That setting just identifies the eligible first Owner. It does not create a Supabase user, send an invitation, or create the workspace. Complete Part A and invite that same email from Supabase before the person tries to create the workspace.
 

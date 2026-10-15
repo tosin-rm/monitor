@@ -45,6 +45,8 @@ async function LoginContent({
                 ? "Sign-in failed. Check your email and password, or contact your workspace administrator."
                 : error === "invite"
                   ? "The invitation link is invalid, expired, or already used. Ask the workspace administrator to send a new invitation."
+                  : error === "signup"
+                    ? "The confirmation link is invalid or expired. Please sign up again."
                   : "Your sign-in link could not be completed. Ask the workspace administrator for help."}
             </p>
           )}
@@ -75,7 +77,7 @@ async function LoginContent({
             Sign in <ArrowRight size={16} />
           </button>
           <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">
-            Access is invitation-only. Public registration is not available.
+            Need an account? <Link href="/signup" className="font-semibold text-blue-700 hover:underline">Sign up</Link>
           </p>
           {canUseDevPreview(process.env.NODE_ENV, process.env.DEV_PREVIEW_ENABLED) && (
             <p className="mt-3 text-center text-[11px]">

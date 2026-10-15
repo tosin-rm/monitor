@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { appBaseUrl } from "@/lib/env";
+import { ensureDefaultWorkspaceMembership } from "@/lib/auth/workspace-membership";
 import { createClient } from "@/lib/supabase/server";
 
 function safeNextPath(value: string | null): string {
@@ -20,16 +22,19 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const authResult = code
     ? await supabase.auth.exchangeCodeForSession(code)
-    : tokenHash && type === "invite"
-      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "invite" })
+    : tokenHash && (type === "invite" || type === "signup")
+      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType })
       : null;
   if (!authResult) {
-    return NextResponse.redirect(new URL("/login?error=invite", baseUrl));
+    return NextResponse.redirect(new URL(`/login?error=${type === "signup" ? "signup" : "invite"}`, baseUrl));
   }
   const { error } = authResult;
   if (error) {
     console.error("Auth callback failed", { code: error.code ?? "auth_error" });
-    return NextResponse.redirect(new URL("/login?error=invite", baseUrl));
+    return NextResponse.redirect(new URL(`/login?error=${type === "signup" ? "signup" : "invite"}`, baseUrl));
+  }
+  if (!(await ensureDefaultWorkspaceMembership(supabase))) {
+    return NextResponse.redirect(new URL("/setup?error=workspace", baseUrl));
   }
   return NextResponse.redirect(new URL(next, baseUrl));
 }

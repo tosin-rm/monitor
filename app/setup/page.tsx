@@ -54,7 +54,11 @@ async function SetupContent({
             <p className="mt-2 text-sm leading-6 text-slate-500">Create the first organization for this private Monitor instance. This one-time setup is restricted to the configured bootstrap owner.</p>
             {error && (
               <p role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-800">
-                {error === "invalid" ? "Enter a valid organization name and IANA timezone." : "Initial setup could not be completed. Confirm server configuration and try again."}
+                {error === "invalid"
+                  ? "Enter a valid organization name and IANA timezone."
+                  : error === "workspace"
+                    ? "Your account is not attached yet. Create the first workspace below to finish setup."
+                    : "Initial setup could not be completed. Confirm server configuration and try again."}
               </p>
             )}
             <form action={bootstrapOrganization} className="mt-6 space-y-4">
@@ -73,11 +77,16 @@ async function SetupContent({
         ) : (
           <>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Your account is not yet attached to a workspace. Ask an owner or administrator to invite this email address.
+              Your account is not yet attached to a workspace. New accounts can join after the workspace has been created and enabled for signups.
             </p>
+            {error === "workspace" && (
+              <p role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-800">
+                Workspace membership could not be assigned. The workspace may not be ready yet; contact the workspace administrator.
+              </p>
+            )}
             <div className="mt-6 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <ShieldCheck size={17} className="mt-0.5 shrink-0 text-slate-500" />
-              <p className="text-xs leading-5 text-slate-600">Workspace membership is managed by authorized team administrators. No public account registration or self-service access is available.</p>
+              <p className="text-xs leading-5 text-slate-600">All self-registered accounts receive Member permissions. Owners and administrators must be assigned through authorized administration.</p>
             </div>
           </>
         )}

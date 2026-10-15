@@ -61,7 +61,9 @@ begin
   action_name := lower(tg_table_name) || case
     when tg_op = 'INSERT' then '.created'
     when tg_op = 'DELETE' then '.deleted'
-    when tg_table_name = 'clients' and old.active and not new.active then '.archived'
+    when tg_table_name = 'clients'
+      and to_jsonb(old) ->> 'active' = 'true'
+      and to_jsonb(new) ->> 'active' = 'false' then '.archived'
     else '.updated'
   end;
 
