@@ -33,7 +33,7 @@ async function NotificationsContent({ searchParams }: { searchParams: Promise<{ 
   const rows = notifications ?? [];
   const failures = rows.filter((row) => row.status === "failed").length;
 
-  return <main className="min-h-screen bg-[#f5f7fa] px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
+  return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Overview</Link>
     <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="text-xl font-bold tracking-tight text-slate-950">Notifications</h1><p className="mt-1 text-sm text-slate-500">Durable delivery history, provider acceptance, and retryable failures.</p></div><Link href="/settings" className="h-9 rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-xs font-semibold text-slate-600 hover:bg-slate-50">Notification settings</Link></div>
     {error && <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error === "forbidden" ? "Your role cannot retry notifications." : error === "retry" ? "The notification is not eligible for retry, or the retry request failed." : "Check the notification and try again."}</p>}
@@ -60,9 +60,9 @@ async function NotificationsContent({ searchParams }: { searchParams: Promise<{ 
 }
 
 function Metric({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: number; detail: string }) {
-  return <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-2 text-blue-600">{icon}<p className="text-xs font-semibold text-slate-500">{label}</p></div><p className="mt-3 text-2xl font-bold text-slate-950">{value}</p><p className="mt-1 text-[10px] text-slate-400">{detail}</p></div>;
+  return <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-2 text-red-600">{icon}<p className="text-xs font-semibold text-slate-500">{label}</p></div><p className="mt-3 text-2xl font-bold text-slate-950">{value}</p><p className="mt-1 text-[10px] text-slate-400">{detail}</p></div>;
 }
 
 function NotificationsLoading() {
-  return <main className="min-h-screen bg-[#f5f7fa] px-5 py-8"><div className="mx-auto max-w-6xl animate-pulse"><div className="h-7 w-48 rounded bg-slate-200" /><div className="mt-7 h-[600px] rounded-xl border border-slate-200 bg-white" /></div></main>;
+  return <main className="min-h-screen bg-white px-5 py-8"><div className="mx-auto max-w-6xl animate-pulse"><div className="h-7 w-48 rounded bg-slate-200" /><div className="mt-7 h-[600px] rounded-xl border border-slate-200 bg-white" /></div></main>;
 }

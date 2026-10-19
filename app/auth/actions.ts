@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { appBaseUrl } from "@/lib/env";
 import { ensureDefaultWorkspaceMembership } from "@/lib/auth/workspace-membership";
+import { classifyPasswordResetError } from "@/lib/auth/password-reset-error";
+import { classifySignupError } from "@/lib/auth/signup-error";
 import { createClient } from "@/lib/supabase/server";
 
 const signupSchema = z.object({
@@ -46,8 +48,11 @@ export async function signUp(formData: FormData): Promise<void> {
     },
   });
   if (error) {
-    console.error("Sign-up failed", { code: error.code ?? "auth_error" });
-    redirect("/signup?error=unavailable");
+    console.error("Sign-up failed", {
+      code: error.code ?? "auth_error",
+      status: error.status,
+    });
+    redirect(`/signup?error=${classifySignupError(error)}`);
   }
   if (data.session) {
     if (!(await ensureDefaultWorkspaceMembership(supabase))) {
@@ -56,6 +61,26 @@ export async function signUp(formData: FormData): Promise<void> {
     redirect("/");
   }
   redirect("/signup?sent=1");
+}
+
+export async function requestPasswordReset(formData: FormData): Promise<void> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!email || !z.string().email().max(254).safeParse(email).success) {
+    redirect("/forgot-password?error=invalid");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${appBaseUrl()}/auth/callback?next=%2Freset-password`,
+  });
+  if (error) {
+    console.error("Password reset request failed", {
+      code: error.code ?? "auth_error",
+      status: error.status,
+    });
+    redirect(`/forgot-password?error=${classifyPasswordResetError(error)}`);
+  }
+  redirect("/forgot-password?sent=1");
 }
 
 export async function signOut(): Promise<void> {

@@ -106,15 +106,21 @@ This section assumes you are setting up a new Monitor installation. It separates
 
    In Vercel, environment variables are under the project's **Settings → Environment Variables**. Select the environment you are deploying (normally Production). Mark secret keys as sensitive if the platform offers that option. Never put `SUPABASE_SECRET_KEY` in a name beginning `NEXT_PUBLIC_`.
 6. **Configure Supabase's return addresses.** In Supabase, open **Authentication → URL Configuration**. Set **Site URL** to the dashboard origin, such as `https://monitor.example.com`. Add this exact redirect URL to the allowed redirect list: `https://monitor.example.com/auth/callback`. Replace the example host with your real dashboard host. This tells Supabase which app is allowed to receive users after they click an invitation link.
-7. **Set the Supabase invitation email template to return to Monitor.** In Supabase, open **Authentication → Email Templates → Invite user**. The invitation link needs to send the one-time invite token to Monitor's callback so Monitor can establish the sign-in session. Use this link in the HTML template:
+7. **Set the Supabase email templates to return to Monitor.** In Supabase, open **Authentication → Email Templates**. For **Invite user**, the link needs to send the one-time invite token to Monitor's callback so Monitor can establish the sign-in session. Use this link in that HTML template:
 
    ```html
    <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=%2Fset-password">Accept invitation</a>
    ```
 
-   The Site URL must be the Monitor website origin from Part A, step 6. Keep other email wording as you prefer, but don't change the link to just `/login` or to the Supabase dashboard. If an invite link verifies in Supabase and then lands at Monitor's login without a session, check this template first.
+   For **Reset password**, use the recovery token link:
+
+   ```html
+   <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=recovery&amp;next=%2Freset-password">Reset your password</a>
+   ```
+
+   The Site URL must be the Monitor website origin from Part A, step 6. Keep other email wording as you prefer, but don't change these links to just `/login` or to the Supabase dashboard. If an invitation or recovery link fails to establish a Monitor session, check the corresponding template first.
 8. **Apply the database migration files.** Open the project files in the repository and locate `supabase/migrations/`. In the Supabase dashboard, open **SQL Editor → New query**. Open `0001_foundation.sql` in your code editor, copy its contents into the SQL Editor, check that the correct Supabase project is selected, and run it. Repeat, one file at a time and in this order: `0002_private_auth.sql`, `0003_notification_outbox.sql`, `0004_incident_workflow.sql`, then `0005_open_signup_membership.sql`. Keep public signup disabled until the workspace and Owner are set up below. Wait for each file to finish successfully before running the next. If a file reports an error, stop and ask a developer to investigate; do not skip ahead or repeatedly run it without understanding the error. Never run these files against a project containing data unless a database operator has reviewed the migration and backup plan.
-9. **Keep public sign-up disabled for now.** In Supabase, open **Authentication → Settings** (sometimes shown as **Sign In / Providers**). Leave **Allow new users to sign up** turned off until the workspace exists and the Owner has confirmed access. This avoids creating accounts that cannot yet join a workspace.
+9. **Keep public sign-up disabled during initial setup.** In Supabase, open **Authentication → Settings** (sometimes shown as **Sign In / Providers**). Leave **Allow new users to sign up** turned off until the workspace exists and the Owner has confirmed access. This avoids creating accounts that cannot yet join a workspace.
 10. **Redeploy after setting environment values.** In your hosting platform, redeploy/restart the dashboard so it starts with the new settings. Open the dashboard address in a browser. Seeing the Monitor sign-in page is a good initial check; the workspace is not created yet.
 11. **Check email invitations are enabled.** Supabase must be able to send Auth invitation emails. For a real team, configure Supabase's approved SMTP/email provider and sender. A project's default email service may have strict sending limits; do not assume invitations will reach the inbox until you test one.
 
@@ -149,7 +155,7 @@ This first-owner bootstrap only works for the configured, signed-in `BOOTSTRAP_O
 
 ##### Part C — give the developer and team their own access
 
-16. **Enable member self-signup once the workspace is ready.** In Supabase Auth, enable **Allow new users to sign up**. Deploy the app containing `/signup`.
+16. **Enable member self-signup once the workspace is ready.** In Supabase Auth, enable **Allow new users to sign up** and configure a verified SMTP provider for reliable confirmation emails. Deploy the app containing `/signup`. Rate-limited signup emails require waiting for the Auth email limit to clear or using the configured SMTP provider; do not repeatedly submit the form.
 17. **Teammates create their own accounts.** They visit `/signup`, enter their work email and a password, then confirm their email. Their account joins the existing workspace as a Member; they cannot choose another role during signup. Test with a separate account and verify that it cannot manage team roles.
 18. **Grant elevated roles only through trusted administration.** An Owner can promote a Member to Admin from **Team**. Do not share the Owner's login. Owners/Admins remain responsible for reviewing who should have access because any person able to sign up can see the workspace's operational data as a Member.
 19. **Give developers separate technical access if needed.** If a developer needs to edit or deploy the source code, grant access to the code repository and deployment platform separately. Dashboard Admin access does not automatically require production database keys. Share only the minimum access needed for their task.

@@ -43,9 +43,9 @@ async function SetupContent({
 
   const { error } = await searchParams;
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f5f7fa] px-5 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-white px-5 py-12">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white"><Activity size={21} /></div>
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white"><Activity size={21} /></div>
         <h1 className="mt-5 text-xl font-bold tracking-tight text-slate-950">Workspace access</h1>
         {bootstrapAvailable ? (
           <>
@@ -62,14 +62,14 @@ async function SetupContent({
             <form action={bootstrapOrganization} className="mt-6 space-y-4">
               <div>
                 <label htmlFor="organizationName" className="mb-1.5 block text-xs font-semibold text-slate-700">Organization name</label>
-                <input id="organizationName" name="organizationName" required maxLength={120} className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Studio name" />
+                <input id="organizationName" name="organizationName" required maxLength={120} className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" placeholder="Studio name" />
               </div>
               <div>
                 <label htmlFor="timeZone" className="mb-1.5 block text-xs font-semibold text-slate-700">Organization timezone</label>
-                <input id="timeZone" name="timeZone" required maxLength={100} defaultValue="Europe/London" className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                <input id="timeZone" name="timeZone" required maxLength={100} defaultValue="Europe/London" className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
                 <p className="mt-1.5 text-[11px] text-slate-400">Use an IANA name such as Europe/London or America/New_York.</p>
               </div>
-              <button type="submit" className="h-11 w-full rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Create workspace</button>
+              <button type="submit" className="h-11 w-full rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700">Create workspace</button>
             </form>
           </>
         ) : (
@@ -94,5 +94,5 @@ async function SetupContent({
 }
 
 function SetupLoading() {
-  return <main className="flex min-h-screen items-center justify-center bg-[#f5f7fa] px-5"><div className="h-96 w-full max-w-lg animate-pulse rounded-2xl bg-white" /></main>;
+  return <main className="flex min-h-screen items-center justify-center bg-white px-5"><div className="h-96 w-full max-w-lg animate-pulse rounded-2xl bg-white" /></main>;
 }

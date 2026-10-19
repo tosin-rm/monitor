@@ -30,7 +30,7 @@ type Metric = {
   value: number;
   detail: string;
   icon: typeof Building2;
-  tone: "blue" | "green" | "amber" | "red" | "purple";
+  tone: "brand" | "green" | "amber" | "red" | "purple";
 };
 
 function displayDate(value: string, timeZone: string): string {
@@ -111,14 +111,14 @@ async function DashboardContent() {
   }
 
   const metrics: Metric[] = [
-    { title: "Active clients", value: clientsResult.count ?? 0, detail: "Client accounts", icon: Building2, tone: "blue" },
+    { title: "Active clients", value: clientsResult.count ?? 0, detail: "Client accounts", icon: Building2, tone: "brand" },
     { title: "Active websites", value: websitesResult.count ?? 0, detail: "Across your portfolio", icon: Globe2, tone: "green" },
     { title: "Expiring soon", value: expiringResult.count ?? 0, detail: "Within the next 30 days", icon: CalendarClock, tone: "amber" },
     { title: "Expired services", value: expiredResult.count ?? 0, detail: "Renewal needs attention", icon: AlertTriangle, tone: "red" },
     { title: "Websites down", value: outagesResult.count ?? 0, detail: "Confirmed open outages", icon: Activity, tone: "red" },
     { title: "Open incidents", value: incidentsResult.count ?? 0, detail: "Awaiting resolution", icon: CircleAlert, tone: "purple" },
     { title: "SSL attention", value: sslResult.count ?? 0, detail: "Expired or due within 30 days", icon: LockKeyhole, tone: "amber" },
-    { title: "Notification failures", value: notificationFailuresResult.count ?? 0, detail: "In the last 7 days", icon: Bell, tone: "blue" },
+    { title: "Notification failures", value: notificationFailuresResult.count ?? 0, detail: "In the last 7 days", icon: Bell, tone: "brand" },
   ];
 
   const links = [
@@ -131,10 +131,10 @@ async function DashboardContent() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa] text-slate-900">
+    <div className="min-h-screen bg-white text-slate-900">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[248px] flex-col border-r border-slate-200 bg-white lg:flex">
         <Link href="/" className="flex h-[76px] items-center gap-3 border-b border-slate-100 px-6">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white">
             <Activity size={19} strokeWidth={2.6} />
           </span>
           <span>
@@ -151,7 +151,7 @@ async function DashboardContent() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors ${
-                  active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                  active ? "bg-red-50 text-red-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 }`}
               >
                 <Icon size={17} strokeWidth={1.8} />
@@ -176,7 +176,7 @@ async function DashboardContent() {
         </div>
         <div className="mt-auto border-t border-slate-100 p-4">
           <div className="mb-3 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-xs font-bold text-red-700">
               {context.email.slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -239,7 +239,7 @@ async function DashboardContent() {
                   <h3 className="text-sm font-bold text-slate-900">Upcoming renewals</h3>
                   <p className="mt-0.5 text-[11px] text-slate-400">Services expiring in the next 30 days</p>
                 </div>
-                <Link href="/calendar" className="flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800">
+                <Link href="/calendar" className="flex items-center gap-1 text-xs font-semibold text-red-700 hover:text-red-800">
                   View calendar <ArrowRight size={14} />
                 </Link>
               </div>
@@ -289,7 +289,7 @@ async function DashboardContent() {
                 <div className="divide-y divide-slate-100">
                   {activityResult.data.map((activity) => (
                     <div key={activity.id} className="flex items-start gap-3 px-5 py-3.5">
-                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600"><Activity size={13} /></span>
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600"><Activity size={13} /></span>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium leading-5 text-slate-700">{activity.action.replaceAll(".", " ")}</p>
                         <p className="mt-0.5 text-[10px] text-slate-400">{activity.entity_type} · {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(new Date(activity.created_at))}</p>
@@ -307,13 +307,13 @@ async function DashboardContent() {
             </section>
           </div>
 
-          <div className="mt-5 flex flex-col gap-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4 sm:flex-row sm:items-center">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600"><LifeBuoy size={17} /></span>
+          <div className="mt-5 flex flex-col gap-4 rounded-xl border border-red-100 bg-red-50/60 p-4 sm:flex-row sm:items-center">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-red-600"><LifeBuoy size={17} /></span>
             <div className="flex-1">
               <p className="text-xs font-semibold text-slate-800">Keep your team in the loop</p>
               <p className="mt-0.5 text-[11px] text-slate-500">Invite authorized teammates to help manage client websites and renewals.</p>
             </div>
-            <Link href="/team" className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700">
+            <Link href="/team" className="flex items-center justify-center gap-2 rounded-lg bg-red-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700">
               Manage team <ArrowRight size={14} />
             </Link>
           </div>
@@ -332,7 +332,7 @@ function greeting(): string {
 
 function DashboardLoading() {
   return (
-    <main className="min-h-screen bg-[#f5f7fa] px-5 py-8 lg:pl-[280px]">
+    <main className="min-h-screen bg-white px-5 py-8 lg:pl-[280px]">
       <div className="mx-auto max-w-[1440px] animate-pulse">
         <div className="h-7 w-44 rounded bg-slate-200" />
         <div className="mt-7 grid grid-cols-2 gap-3 xl:grid-cols-4">

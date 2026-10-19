@@ -16,14 +16,14 @@ import {
 import { canUseDevPreview } from "@/lib/auth/dev-preview";
 
 const metrics = [
-  { label: "Active clients", value: "12", detail: "Client accounts", icon: Building2, color: "text-blue-600", bg: "bg-blue-50" },
+  { label: "Active clients", value: "12", detail: "Client accounts", icon: Building2, color: "text-red-600", bg: "bg-red-50" },
   { label: "Active websites", value: "18", detail: "Across your portfolio", icon: Globe2, color: "text-emerald-600", bg: "bg-emerald-50" },
   { label: "Expiring soon", value: "4", detail: "Within the next 30 days", icon: CalendarClock, color: "text-amber-600", bg: "bg-amber-50" },
   { label: "Expired services", value: "1", detail: "Renewal needs attention", icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
   { label: "Websites down", value: "1", detail: "Confirmed open outages", icon: Activity, color: "text-red-600", bg: "bg-red-50" },
   { label: "Open incidents", value: "2", detail: "Awaiting resolution", icon: CircleAlert, color: "text-violet-600", bg: "bg-violet-50" },
   { label: "SSL attention", value: "2", detail: "Due within 30 days", icon: LockKeyhole, color: "text-amber-600", bg: "bg-amber-50" },
-  { label: "Notification failures", value: "0", detail: "In the last 7 days", icon: Bell, color: "text-blue-600", bg: "bg-blue-50" },
+  { label: "Notification failures", value: "0", detail: "In the last 7 days", icon: Bell, color: "text-red-600", bg: "bg-red-50" },
 ];
 
 const renewals = [
@@ -35,7 +35,7 @@ const renewals = [
 const activity = [
   { title: "Renewal confirmed", detail: "Mosaic Works · Hosting", time: "Today, 10:42", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50" },
   { title: "Incident acknowledged", detail: "Northstar Studio · Website outage", time: "Today, 09:18", icon: CircleAlert, color: "text-amber-600 bg-amber-50" },
-  { title: "Website added", detail: "Harbor & Pine · Production site", time: "Yesterday, 16:05", icon: Globe2, color: "text-blue-600 bg-blue-50" },
+  { title: "Website added", detail: "Harbor & Pine · Production site", time: "Yesterday, 16:05", icon: Globe2, color: "text-red-600 bg-red-50" },
 ];
 
 export default function DevPreviewPage() {
@@ -44,13 +44,13 @@ export default function DevPreviewPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f7fa] text-slate-900">
+    <main className="min-h-screen bg-white text-slate-900">
       <div className="border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-center text-xs font-semibold text-amber-900">
         Local design preview — sample data only. This is not a signed-in session and does not access Supabase.
       </div>
       <aside className="fixed inset-y-[41px] left-0 z-10 hidden w-[248px] flex-col border-r border-slate-200 bg-white lg:flex">
         <div className="flex h-[76px] items-center gap-3 border-b border-slate-100 px-6">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white"><Activity size={19} strokeWidth={2.6} /></span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-white"><Activity size={19} strokeWidth={2.6} /></span>
           <span><span className="block text-[15px] font-bold tracking-tight text-slate-950">monitor</span><span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-slate-400">Client operations</span></span>
         </div>
         <nav className="space-y-1 px-4 pt-7" aria-label="Preview navigation">
@@ -62,7 +62,7 @@ export default function DevPreviewPage() {
             ["Incidents", "Incident timeline"],
             ["Notifications", "Delivery history"],
           ].map(([label, detail], index) => (
-            <div key={label} className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs ${index === 0 ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-500"}`}>
+            <div key={label} className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs ${index === 0 ? "bg-red-50 font-semibold text-red-700" : "text-slate-500"}`}>
               <span>{label}</span><span className="text-[9px] opacity-60">{detail}</span>
             </div>
           ))}
@@ -108,7 +108,7 @@ export default function DevPreviewPage() {
             </section>
           </div>
 
-          <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4"><ShieldCheck size={17} className="mt-0.5 shrink-0 text-blue-700" /><p className="text-xs leading-5 text-blue-900"><strong>Safe preview mode.</strong> All numbers and names on this page are hardcoded examples for layout review. No authentication is skipped for the real application, no database is queried, and no changes can be saved here.</p></div>
+          <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50/70 p-4"><ShieldCheck size={17} className="mt-0.5 shrink-0 text-red-700" /><p className="text-xs leading-5 text-red-900"><strong>Safe preview mode.</strong> All numbers and names on this page are hardcoded examples for layout review. No authentication is skipped for the real application, no database is queried, and no changes can be saved here.</p></div>
         </div>
       </div>
     </main>

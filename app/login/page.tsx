@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { Activity, ArrowRight, LockKeyhole } from "lucide-react";
+import { Activity, ArrowRight } from "lucide-react";
 import { signIn } from "@/app/auth/actions";
+import { PasswordInput } from "@/app/_components/password-input";
 import { getRequestAuthContext } from "@/lib/auth/session";
 import { canUseDevPreview } from "@/lib/auth/dev-preview";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 export default function LoginPage(props: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   return (
     <Suspense fallback={<LoginLoading />}>
@@ -22,17 +23,17 @@ export default function LoginPage(props: {
 async function LoginContent({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const context = await getRequestAuthContext();
   if (context) redirect(context.organizationId ? "/" : "/setup");
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f5f7fa] px-5 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-white px-5 py-12">
       <div className="w-full max-w-[420px]">
         <div className="mb-8 flex flex-col items-center text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-600 text-white shadow-lg shadow-red-600/20">
             <Activity size={23} strokeWidth={2.5} />
           </span>
           <h1 className="mt-5 text-xl font-bold tracking-tight text-slate-950">Sign in to Monitor</h1>
@@ -50,6 +51,11 @@ async function LoginContent({
                   : "Your sign-in link could not be completed. Ask the workspace administrator for help."}
             </p>
           )}
+          {success === "password-reset" && (
+            <p role="status" className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-xs leading-5 text-emerald-800">
+              Your password has been updated. Sign in with your new password.
+            </p>
+          )}
           <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-700">Work email</label>
           <input
             id="email"
@@ -58,30 +64,23 @@ async function LoginContent({
             autoComplete="email"
             required
             maxLength={254}
-            className="mb-5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="mb-5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-500 focus:ring-2 focus:ring-red-100"
             placeholder="you@company.com"
           />
           <div className="mb-1.5 flex items-center justify-between">
             <label htmlFor="password" className="text-xs font-semibold text-slate-700">Password</label>
-            <LockKeyhole size={14} className="text-slate-400" aria-hidden="true" />
+            <Link href="/forgot-password" className="text-[11px] font-semibold text-red-700 hover:underline">Forgot password?</Link>
           </div>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
-          <button type="submit" className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+          <PasswordInput />
+          <button type="submit" className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-red-600 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">
             Sign in <ArrowRight size={16} />
           </button>
           <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">
-            Need an account? <Link href="/signup" className="font-semibold text-blue-700 hover:underline">Sign up</Link>
+            Need an account? <Link href="/signup" className="font-semibold text-red-700 hover:underline">Sign up</Link>
           </p>
           {canUseDevPreview(process.env.NODE_ENV, process.env.DEV_PREVIEW_ENABLED) && (
             <p className="mt-3 text-center text-[11px]">
-              <Link href="/dev-preview" className="font-semibold text-blue-700 hover:underline">Open local design preview</Link>
+              <Link href="/dev-preview" className="font-semibold text-red-700 hover:underline">Open local design preview</Link>
               <span className="mt-1 block text-slate-400">Sample data only; no account or database access.</span>
             </p>
           )}
@@ -92,5 +91,5 @@ async function LoginContent({
 }
 
 function LoginLoading() {
-  return <main className="flex min-h-screen items-center justify-center bg-[#f5f7fa] px-5"><div className="h-96 w-full max-w-[420px] animate-pulse rounded-2xl bg-white" /></main>;
+  return <main className="flex min-h-screen items-center justify-center bg-white px-5"><div className="h-96 w-full max-w-[420px] animate-pulse rounded-2xl bg-white" /></main>;
 }

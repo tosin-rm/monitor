@@ -39,7 +39,7 @@ export function ThemeToggle() {
       aria-label={`Switch to ${dark ? "light" : "dark"} mode`}
       aria-pressed={dark}
       title={`Switch to ${dark ? "light" : "dark"} mode`}
-      className="fixed bottom-4 right-4 z-50 inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      className="fixed bottom-4 right-4 z-50 inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
     >
       {dark ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}
       <span>{dark ? "Dark" : "Light"}</span>

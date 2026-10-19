@@ -22,16 +22,26 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const authResult = code
     ? await supabase.auth.exchangeCodeForSession(code)
-    : tokenHash && (type === "invite" || type === "signup")
+    : tokenHash && (type === "invite" || type === "signup" || type === "recovery")
       ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType })
       : null;
+  const isPasswordRecovery = type === "recovery" || (Boolean(code) && next === "/reset-password");
   if (!authResult) {
-    return NextResponse.redirect(new URL(`/login?error=${type === "signup" ? "signup" : "invite"}`, baseUrl));
+    const destination = isPasswordRecovery
+      ? "/forgot-password?error=link"
+      : `/login?error=${type === "signup" ? "signup" : "invite"}`;
+    return NextResponse.redirect(new URL(destination, baseUrl));
   }
   const { error } = authResult;
   if (error) {
     console.error("Auth callback failed", { code: error.code ?? "auth_error" });
-    return NextResponse.redirect(new URL(`/login?error=${type === "signup" ? "signup" : "invite"}`, baseUrl));
+    const destination = isPasswordRecovery
+      ? "/forgot-password?error=link"
+      : `/login?error=${type === "signup" ? "signup" : "invite"}`;
+    return NextResponse.redirect(new URL(destination, baseUrl));
+  }
+  if (isPasswordRecovery) {
+    return NextResponse.redirect(new URL("/reset-password", baseUrl));
   }
   if (!(await ensureDefaultWorkspaceMembership(supabase))) {
     return NextResponse.redirect(new URL("/setup?error=workspace", baseUrl));

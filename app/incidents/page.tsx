@@ -32,7 +32,7 @@ async function IncidentsContent({ searchParams }: { searchParams: Promise<{ erro
   }
   const rows = data ?? [];
 
-  return <main className="min-h-screen bg-[#f5f7fa] px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
+  return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Overview</Link>
     <div className="mt-6"><h1 className="text-xl font-bold tracking-tight text-slate-950">Incidents</h1><p className="mt-1 text-sm text-slate-500">Operational incident history and response status for this organization.</p></div>
     {params.error && <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{params.error === "forbidden" ? "Your role cannot resolve incidents." : params.error === "invalid" ? "The incident update was invalid." : "The incident status could not be updated."}</p>}
@@ -55,7 +55,7 @@ async function IncidentsContent({ searchParams }: { searchParams: Promise<{ erro
 }
 
 function StatusForm({ id, status, label }: { id: string; status: "acknowledged" | "investigating" | "resolved"; label: string }) {
-  return <form action={changeIncidentStatus}><input type="hidden" name="incidentId" value={id} /><input type="hidden" name="status" value={status} /><button type="submit" className="rounded-md bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-blue-700">{label}</button></form>;
+  return <form action={changeIncidentStatus}><input type="hidden" name="incidentId" value={id} /><input type="hidden" name="status" value={status} /><button type="submit" className="rounded-md bg-red-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-red-700">{label}</button></form>;
 }
 
 function formatDate(value: string, timeZone: string) {
@@ -63,5 +63,5 @@ function formatDate(value: string, timeZone: string) {
 }
 
 function IncidentsLoading() {
-  return <main className="min-h-screen bg-[#f5f7fa] px-5 py-8"><div className="mx-auto max-w-6xl animate-pulse"><div className="h-7 w-48 rounded bg-slate-200" /><div className="mt-7 h-[600px] rounded-xl border border-slate-200 bg-white" /></div></main>;
+  return <main className="min-h-screen bg-white px-5 py-8"><div className="mx-auto max-w-6xl animate-pulse"><div className="h-7 w-48 rounded bg-slate-200" /><div className="mt-7 h-[600px] rounded-xl border border-slate-200 bg-white" /></div></main>;
 }

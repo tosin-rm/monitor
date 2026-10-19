@@ -16,10 +16,10 @@ export function TelegramLinkForm() {
       </button>
     </form>
     {state.error && <p role="alert" className="mt-2 text-xs text-red-700">{state.error}</p>}
-    {state.code && <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
-      <p className="text-[11px] font-semibold text-blue-900">Open your team bot and send this command within 10 minutes:</p>
+    {state.code && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+      <p className="text-[11px] font-semibold text-red-900">Open your team bot and send this command within 10 minutes:</p>
       <code className="mt-2 block break-all rounded bg-white px-2 py-2 text-xs text-slate-800">/start {state.code}</code>
-      <p className="mt-2 text-[10px] leading-4 text-blue-800">The code is one-use. Do not share it outside the intended private chat or approved team group.</p>
+      <p className="mt-2 text-[10px] leading-4 text-red-800">The code is one-use. Do not share it outside the intended private chat or approved team group.</p>
     </div>}
   </div>;
 }

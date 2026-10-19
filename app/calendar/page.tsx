@@ -43,14 +43,14 @@ async function CalendarContent() {
   const pastDue = rows.filter((asset) => asset.days < 0);
   const upcoming = rows.filter((asset) => asset.days >= 0);
 
-  return <main className="min-h-screen bg-[#f5f7fa] px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-5xl">
+  return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-5xl">
     <Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Overview</Link>
     <div className="mt-6"><h1 className="text-xl font-bold tracking-tight text-slate-950">Expiry calendar</h1><p className="mt-1 text-sm text-slate-500">Upcoming infrastructure renewals and recently expired services · {context.timeZone} calendar dates.</p></div>
 
     {pastDue.length > 0 && <section className="mt-6 overflow-hidden rounded-xl border border-red-200 bg-white"><div className="border-b border-red-100 bg-red-50/60 px-5 py-4"><h2 className="text-sm font-bold text-red-800">Past expiry</h2><p className="mt-0.5 text-[11px] text-red-600">{pastDue.length} active services are past their recorded expiry date.</p></div><div className="divide-y divide-slate-100">{pastDue.map((asset) => <CalendarRow key={asset.id} asset={asset} timeZone={context.timeZone} />)}</div></section>}
 
     <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="border-b border-slate-100 px-5 py-4"><h2 className="text-sm font-bold text-slate-900">Upcoming renewals</h2><p className="mt-0.5 text-[11px] text-slate-400">Sorted by expiry date · services without a known date are listed in inventory.</p></div>
-      {upcoming.length ? <div className="divide-y divide-slate-100">{upcoming.map((asset) => <CalendarRow key={asset.id} asset={asset} timeZone={context.timeZone} />)}</div> : <div className="px-6 py-14 text-center"><CalendarClock size={22} className="mx-auto text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">No upcoming expiry dates recorded</p><p className="mt-1 text-xs text-slate-400">Add or verify service dates in the infrastructure inventory.</p><Link href="/inventory" className="mt-4 inline-flex text-xs font-semibold text-blue-700 hover:underline">Open inventory</Link></div>}
+      {upcoming.length ? <div className="divide-y divide-slate-100">{upcoming.map((asset) => <CalendarRow key={asset.id} asset={asset} timeZone={context.timeZone} />)}</div> : <div className="px-6 py-14 text-center"><CalendarClock size={22} className="mx-auto text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">No upcoming expiry dates recorded</p><p className="mt-1 text-xs text-slate-400">Add or verify service dates in the infrastructure inventory.</p><Link href="/inventory" className="mt-4 inline-flex text-xs font-semibold text-red-700 hover:underline">Open inventory</Link></div>}
     </section>
   </div></main>;
 }
@@ -73,10 +73,10 @@ function CalendarRow({ asset, timeZone }: {
 }) {
   const website = Array.isArray(asset.website) ? asset.website[0] : asset.website;
   return <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
-    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${asset.days <= 7 ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}><CalendarClock size={17} /></span>
-    <div className="min-w-0 flex-1"><Link href={`/websites/${asset.website_id}`} className="text-xs font-semibold text-slate-800 hover:text-blue-700">{asset.service_name || asset.hostname || asset.asset_type}</Link><p className="mt-1 truncate text-[10px] text-slate-400">{relationName(website?.client) ?? "Client"} · {website?.name ?? "Website"} · {asset.asset_type.replaceAll("_", " ")}</p><p className="mt-1 text-[10px] text-slate-500">Responsible: {asset.renewal_responsibility || "Unassigned"} · Status: {asset.renewal_status.replaceAll("_", " ")}</p></div>
+    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${asset.days <= 7 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}><CalendarClock size={17} /></span>
+    <div className="min-w-0 flex-1"><Link href={`/websites/${asset.website_id}`} className="text-xs font-semibold text-slate-800 hover:text-red-700">{asset.service_name || asset.hostname || asset.asset_type}</Link><p className="mt-1 truncate text-[10px] text-slate-400">{relationName(website?.client) ?? "Client"} · {website?.name ?? "Website"} · {asset.asset_type.replaceAll("_", " ")}</p><p className="mt-1 text-[10px] text-slate-500">Responsible: {asset.renewal_responsibility || "Unassigned"} · Status: {asset.renewal_status.replaceAll("_", " ")}</p></div>
     <div className="sm:text-right"><p className={`text-xs font-bold ${asset.days < 0 ? "text-red-700" : asset.days <= 7 ? "text-amber-700" : "text-slate-700"}`}>{asset.days < 0 ? `${Math.abs(asset.days)} days overdue` : asset.days === 0 ? "Expires today" : `${asset.days} ${asset.days === 1 ? "day" : "days"} remaining`}</p><p className="mt-1 text-[10px] text-slate-400">{asset.expiry_date ? new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeZone }).format(new Date(`${asset.expiry_date}T12:00:00Z`)) : ""}</p></div>
-    {asset.renewal_url && <a href={asset.renewal_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:underline">Renew <ExternalLink size={11} /></a>}
+    {asset.renewal_url && <a href={asset.renewal_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 hover:underline">Renew <ExternalLink size={11} /></a>}
   </div>;
 }
 
@@ -89,5 +89,5 @@ function relationName(value: unknown): string | null {
 }
 
 function CalendarLoading() {
-  return <main className="min-h-screen bg-[#f5f7fa] px-5 py-8"><div className="mx-auto max-w-5xl animate-pulse"><div className="h-7 w-48 rounded bg-slate-200" /><div className="mt-7 h-96 rounded-xl border border-slate-200 bg-white" /></div></main>;
+  return <main className="min-h-screen bg-white px-5 py-8"><div className="mx-auto max-w-5xl animate-pulse"><div className="h-7 w-48 rounded bg-slate-200" /><div className="mt-7 h-96 rounded-xl border border-slate-200 bg-white" /></div></main>;
 }
