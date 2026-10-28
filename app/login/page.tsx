@@ -46,9 +46,15 @@ async function LoginContent({
                 ? "Sign-in failed. Check your email and password, or contact your workspace administrator."
                 : error === "invite"
                   ? "The invitation link is invalid, expired, or already used. Ask the workspace administrator to send a new invitation."
+                  : error === "invite-expired"
+                    ? "This invitation has expired or was already used. Ask the workspace administrator to send a new invitation, then open the newest email link."
+                    : error === "invite-configuration"
+                      ? "The invitation email link could not be verified. Ask the workspace administrator to check the Supabase Invite user email template and allow this site's /auth/callback URL."
+                      : error === "invite-invalid"
+                        ? "This invitation link could not be verified. Open the newest invitation email, or ask the workspace administrator to send a fresh invitation."
                   : error === "signup"
                     ? "The confirmation link is invalid or expired. Please sign up again."
-                  : "Your sign-in link could not be completed. Ask the workspace administrator for help."}
+                    : "Your sign-in link could not be completed. Ask the workspace administrator for help."}
             </p>
           )}
           {success === "password-reset" && (

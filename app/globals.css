@@ -205,3 +205,29 @@ html[data-theme="dark"] .tone-purple {
   background: #2e1065;
   color: #c4b5fd;
 }
+
+@page {
+  size: A4;
+  margin: 16mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-paper {
+    width: 100%;
+    max-width: none;
+  }
+
+  .report-paper section,
+  .report-paper table,
+  .report-paper li {
+    break-inside: avoid;
+  }
+}

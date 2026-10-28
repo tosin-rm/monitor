@@ -29,13 +29,14 @@ function Field({ label, name, defaultValue, type = "text", required, maxLength }
 
 export function WebsiteFields({ clients, website, selectedClient }: {
   clients: Array<{ id: string; name: string }>;
-  website?: { name: string; primary_url: string; environment: string; client_id: string };
+  website?: { name: string; primary_url: string; environment: string; platform: string; client_id: string };
   selectedClient?: string;
 }) {
   return <>
     <div><label htmlFor="clientId" className="mb-1.5 block text-[11px] font-semibold text-slate-700">Client</label><select id="clientId" name="clientId" required defaultValue={website?.client_id ?? selectedClient ?? ""} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-red-500">{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div>
     <div><label htmlFor="website-name" className="mb-1.5 block text-[11px] font-semibold text-slate-700">Website name</label><input id="website-name" name="name" required maxLength={160} defaultValue={website?.name} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" placeholder="Marketing site" /></div>
     <div><label htmlFor="primaryUrl" className="mb-1.5 block text-[11px] font-semibold text-slate-700">Primary URL</label><input id="primaryUrl" name="primaryUrl" type="url" required maxLength={2048} defaultValue={website?.primary_url} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" placeholder="https://example.com" /></div>
+    <div><label htmlFor="platform" className="mb-1.5 block text-[11px] font-semibold text-slate-700">Platform</label><select id="platform" name="platform" defaultValue={website?.platform ?? "unknown"} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs">{[["wordpress", "WordPress"], ["nextjs", "Next.js"], ["other", "Other"], ["unknown", "Not specified"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     <div><label htmlFor="environment" className="mb-1.5 block text-[11px] font-semibold text-slate-700">Environment</label><select id="environment" name="environment" defaultValue={website?.environment ?? "production"} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs">{["production", "staging", "development", "other"].map((value) => <option key={value} value={value}>{value[0]!.toUpperCase() + value.slice(1)}</option>)}</select></div>
   </>;
 }

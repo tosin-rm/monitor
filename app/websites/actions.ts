@@ -18,6 +18,7 @@ const websiteSchema = z.object({
   clientId: z.string().uuid(),
   name: z.string().trim().min(1).max(160),
   primaryUrl: z.string().trim().min(1).max(2048),
+  platform: z.enum(["wordpress", "nextjs", "other", "unknown"]),
   environment: z.enum(["production", "staging", "development", "other"]),
 });
 const assetSchema = z.object({
@@ -52,6 +53,7 @@ function normalizeWebsiteForm(formData: FormData) {
     clientId: String(formData.get("clientId") ?? ""),
     name: String(formData.get("name") ?? ""),
     primaryUrl: String(formData.get("primaryUrl") ?? ""),
+    platform: String(formData.get("platform") ?? "unknown"),
     environment: String(formData.get("environment") ?? "production"),
   });
   if (!parsed.success) return null;
@@ -73,6 +75,7 @@ export async function createWebsite(formData: FormData): Promise<void> {
     client_id: input.clientId,
     name: input.name,
     primary_url: input.primaryUrl,
+    platform: input.platform,
     environment: input.environment,
   }).select("id").single();
   if (error) {
@@ -92,6 +95,7 @@ export async function updateWebsite(formData: FormData): Promise<void> {
     client_id: input.clientId,
     name: input.name,
     primary_url: input.primaryUrl,
+    platform: input.platform,
     environment: input.environment,
   }).eq("id", websiteId).eq("organization_id", context.organizationId).select("id").maybeSingle();
   if (error || !data) {

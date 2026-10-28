@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker:uptime": "tsx worker/uptime.ts"
+    "worker:uptime": "tsx worker/uptime.ts",
+    "worker:uptime:once": "tsx worker/uptime.ts --once",
+    "worker:wordpress-vulnerabilities:once": "tsx worker/wordpress-vulnerability-feed.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.2.1",
@@ -44,6 +46,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "supabase": "^2.121.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",

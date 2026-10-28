@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
-import { ArrowLeft, CalendarClock, ExternalLink, Globe2, LockKeyhole, Plus, ShieldCheck } from "lucide-react";
+import { Activity, ArrowLeft, CalendarClock, ExternalLink, Globe2, LockKeyhole, Plus, ShieldCheck, Zap } from "lucide-react";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
+import { WordPressSecurityPanel } from "@/app/websites/[websiteId]/wordpress-security-panel";
 import { AssetFields, WebsiteFields } from "@/app/_components/record-fields";
 import { archiveAsset, archiveWebsite, confirmRenewal, createAsset, createMonitoringEndpoint, setMonitoringEndpoint, updateWebsite } from "@/app/websites/actions";
 import { can } from "@/lib/auth/roles";
 import { calendarDaysRemaining } from "@/lib/expiry/calendar-days";
 import { getRequestAuthContext } from "@/lib/auth/session";
+import { isConnectorReportStale } from "@/lib/wordpress-connector/status";
+import { getCentralVulnerabilityAssessment } from "@/lib/wordpress-connector/vulnerability-assessment";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Website details" };
@@ -23,23 +26,74 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   if (!context.organizationId) redirect("/setup");
   const [{ websiteId }, paramsResult] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
-  const [websiteResult, clientsResult, assetsResult, endpointsResult, incidentsResult] = await Promise.all([
-    supabase.from("websites").select("id, client_id, name, primary_url, environment, active, client:clients(name)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle(),
+  const [websiteResult, clientsResult, assetsResult, endpointsResult, incidentsResult, performanceResult, connectorResult] = await Promise.all([
+    supabase.from("websites").select("id, client_id, name, primary_url, environment, platform, active, client:clients(name)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle(),
     can(context.role, "manage_websites") ? supabase.from("clients").select("id, name").eq("organization_id", context.organizationId).eq("active", true).order("name") : Promise.resolve({ data: [], error: null }),
     supabase.from("assets").select("id, asset_type, provider_name, provider_account_reference, service_name, hostname, expiry_date, renewal_url, renewal_responsibility, renewal_status, date_source, last_verified_at, last_checked_at, last_check_error, date_confidence").eq("website_id", websiteId).eq("organization_id", context.organizationId).eq("active", true).order("expiry_date", { ascending: true, nullsFirst: false }),
     supabase.from("monitoring_endpoints").select("id, endpoint_url, enabled, check_interval_seconds, timeout_seconds, last_checked_at, last_success_at, last_failure_at, consecutive_failures, consecutive_failure_threshold").eq("website_id", websiteId).eq("organization_id", context.organizationId).order("created_at"),
     supabase.from("incidents").select("id, incident_type, severity, status, started_at, last_observed_at, summary").eq("website_id", websiteId).eq("organization_id", context.organizationId).in("status", ["open", "acknowledged", "investigating"]).order("started_at", { ascending: false }).limit(10),
+    supabase.from("check_results").select("id, checked_at, success, error_code, sanitized_error_message, metadata").eq("website_id", websiteId).eq("organization_id", context.organizationId).eq("check_type", "performance").order("checked_at", { ascending: false }).limit(10),
+    supabase.from("wordpress_connectors").select("id, status, paired_at, last_report_at, last_error_code").eq("website_id", websiteId).eq("organization_id", context.organizationId).maybeSingle(),
   ]);
-  const errors = [websiteResult.error, clientsResult.error, assetsResult.error, endpointsResult.error, incidentsResult.error].filter(Boolean);
+  const errors = [websiteResult.error, clientsResult.error, assetsResult.error, endpointsResult.error, incidentsResult.error, performanceResult.error, connectorResult.error].filter(Boolean);
   if (errors.length) {
     console.error("Website detail query failed", errors.map((error) => error?.code));
     throw new Error("Website information could not be loaded.");
   }
   if (!websiteResult.data) notFound();
   const website = websiteResult.data;
+  const wordpressLatestResult = website.platform === "wordpress" && connectorResult.data?.status === "active"
+    ? await supabase.from("wordpress_connector_reports").select("collected_at, wordpress_version, plugins, spam_comment_count, security_report, schema_version").eq("website_id", websiteId).eq("organization_id", context.organizationId).order("received_at", { ascending: false }).limit(1).maybeSingle()
+    : { data: null, error: null };
+  if (wordpressLatestResult.error) {
+    console.error("WordPress connector report query failed", { code: wordpressLatestResult.error.code });
+    throw new Error("WordPress security information could not be loaded.");
+  }
+  const latestWordPressInventory = wordpressLatestResult.data as { plugins: Array<{ slug: string; version: string }> } | null;
+  const centralVulnerability = website.platform === "wordpress" && latestWordPressInventory
+    ? await getCentralVulnerabilityAssessment(latestWordPressInventory.plugins ?? [])
+    : null;
   const client = Array.isArray(website.client) ? website.client[0] : website.client;
   const endpoints = endpointsResult.data ?? [];
   const endpointIds = endpoints.map((endpoint) => endpoint.id);
+  const performanceChecks = performanceResult.data ?? [];
+  const latestPerformance = performanceChecks[0];
+  const performanceMetrics = latestPerformance?.metadata as Record<string, string | number | null> | undefined;
+  const since24h = getSince24Hours();
+  const recentHttpChecks = endpointIds.length
+    ? await supabase.from("check_results").select("success, response_time_ms, checked_at")
+      .eq("organization_id", context.organizationId).in("endpoint_id", endpointIds)
+      .eq("check_type", "http").gte("checked_at", since24h).order("checked_at", { ascending: false }).limit(500)
+    : { data: [], error: null };
+  if (recentHttpChecks.error) {
+    console.error("Website health summary query failed", { code: recentHttpChecks.error.code });
+    throw new Error("Website health history could not be loaded.");
+  }
+  const httpChecks = recentHttpChecks.data ?? [];
+  const uptimePercent = httpChecks.length
+    ? (httpChecks.filter((check) => check.success).length / httpChecks.length) * 100
+    : null;
+  const responseTimes = httpChecks.map((check) => check.response_time_ms).filter((value): value is number => value !== null).sort((a, b) => a - b);
+  const averageResponseMs = responseTimes.length ? Math.round(responseTimes.reduce((total, value) => total + value, 0) / responseTimes.length) : null;
+  const p95ResponseMs = responseTimes.length ? responseTimes[Math.min(responseTimes.length - 1, Math.ceil(responseTimes.length * 0.95) - 1)] : null;
+  const certificateAssets = (assetsResult.data ?? []).filter((asset) => asset.asset_type === "ssl_certificate");
+  const certificateChecks = certificateAssets.length
+    ? await supabase.from("check_results").select("id, checked_at, success, certificate_not_after, sanitized_error_message, metadata, asset_id")
+      .eq("organization_id", context.organizationId).in("asset_id", certificateAssets.map((asset) => asset.id))
+      .eq("check_type", "ssl").order("checked_at", { ascending: false }).limit(20)
+    : { data: [], error: null };
+  if (certificateChecks.error) {
+    console.error("Website certificate history query failed", { code: certificateChecks.error.code });
+    throw new Error("Website certificate history could not be loaded.");
+  }
+  const latestCertificateByAsset = new Map<string, NonNullable<typeof certificateChecks.data>[number]>();
+  for (const check of certificateChecks.data ?? []) {
+    if (check.asset_id && !latestCertificateByAsset.has(check.asset_id)) latestCertificateByAsset.set(check.asset_id, check);
+  }
+  const latestCertificateChecks = [...latestCertificateByAsset.values()];
+  const healthWarning = endpoints.some((endpoint) => endpoint.enabled && endpoint.consecutive_failures >= endpoint.consecutive_failure_threshold)
+    || latestCertificateChecks.some((check) => !check.success);
+  const healthLabel = healthWarning ? "Needs attention" : endpoints.some((endpoint) => endpoint.enabled) || certificateAssets.length ? "Monitoring active" : "No checks configured";
   const historyResult = endpointIds.length
     ? await supabase.from("check_results").select("endpoint_id, checked_at, success, http_status, response_time_ms, sanitized_error_message").eq("organization_id", context.organizationId).in("endpoint_id", endpointIds).order("checked_at", { ascending: false }).limit(12)
     : { data: [], error: null };
@@ -49,9 +103,31 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   }
   return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/websites" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Websites</Link>
-    <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-slate-400">{client?.name ?? "Client"} · <span className="capitalize">{website.environment}</span></p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{website.name}</h1><a href={website.primary_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-red-700 hover:underline">{website.primary_url}<ExternalLink size={12} /></a></div><span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active website</span></div>
+    <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-slate-400">{client?.name ?? "Client"} · <span className="capitalize">{website.environment}</span></p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{website.name}</h1><a href={website.primary_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-red-700 hover:underline">{website.primary_url}<ExternalLink size={12} /></a></div><div className="flex flex-wrap items-center gap-2"><Link href={`/websites/${website.id}/report`} className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">Monthly report</Link><span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active website</span></div></div>
     {paramsResult.error && <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{websiteError(paramsResult.error)}</p>}
     {paramsResult.success && <p role="status" className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">{paramsResult.success === "renewed" ? "Renewal recorded and reminder schedule updated." : "Website information saved."}</p>}
+
+    {website.platform === "wordpress" && <WordPressSecurityPanel websiteId={website.id} websiteUrl={website.primary_url} canManage={can(context.role, "manage_websites")} stale={isConnectorReportStale(connectorResult.data?.last_report_at ?? null)} evaluatedAt={new Date().toISOString()} connection={connectorResult.data} vulnerability={centralVulnerability} latest={wordpressLatestResult.data as { collected_at: string; wordpress_version: string; plugins: Array<{ slug: string; name: string; version: string; active: boolean; update_status: "available" | "unavailable" | "unknown"; update_version?: string | null }>; spam_comment_count: number; security_report: import("@/lib/wordpress-connector/security-types").ConnectorSecurityReport | import("@/lib/wordpress-connector/security-types").ProposedConnectorSecurityReport | Record<string, never> } | null} />}
+
+    <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-2"><Activity size={16} className="text-red-600" /><div><h2 className="text-sm font-bold text-slate-900">Website health</h2><p className="mt-0.5 text-[11px] text-slate-400">Live status and recent monitoring history</p></div><span className={`ml-2 rounded-full px-2.5 py-1 text-[10px] font-semibold ${healthWarning ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{healthLabel}</span></div><span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-medium capitalize text-slate-500">Platform: {website.platform === "nextjs" ? "Next.js" : website.platform === "wordpress" ? "WordPress" : website.platform === "other" ? "Other" : "Not specified"}</span></div>
+      <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+        <HealthMetric label="Uptime · 24 hours" value={uptimePercent === null ? "No data" : `${uptimePercent.toFixed(2)}%`} detail={httpChecks.length ? `${httpChecks.length} checks` : endpoints.length ? "Awaiting checks" : "No endpoints configured"} tone={uptimePercent !== null && uptimePercent < 99 ? "warning" : "normal"} />
+        <HealthMetric label="Average response" value={averageResponseMs === null ? "No data" : `${averageResponseMs} ms`} detail={p95ResponseMs === null ? "Last 24 hours" : `95th percentile ${p95ResponseMs} ms`} />
+        <HealthMetric label="TLS certificates" value={certificateAssets.length ? latestCertificateChecks.length === 0 ? "Awaiting check" : latestCertificateChecks.length === certificateAssets.length && latestCertificateChecks.every((check) => check.success) ? "Valid" : healthWarning && latestCertificateChecks.some((check) => !check.success) ? "Attention" : "Partial data" : "Not monitored"} detail={certificateAssets.length ? `${certificateAssets.length} certificate asset(s)` : "Add a certificate asset to monitor TLS"} tone={latestCertificateChecks.some((check) => !check.success) ? "warning" : "normal"} />
+        <HealthMetric label="Performance score" value={typeof performanceMetrics?.performance_score === "number" ? `${performanceMetrics.performance_score}/100` : latestPerformance ? "Scan failed" : "Awaiting scan"} detail={latestPerformance ? `PageSpeed scan · ${formatCheckedAt(latestPerformance.checked_at, context.timeZone)}` : "Daily Lighthouse scan"} tone={typeof performanceMetrics?.performance_score === "number" && performanceMetrics.performance_score < 50 ? "warning" : "normal"} />
+      </div>
+      <div className="grid gap-5 border-t border-slate-100 p-5 lg:grid-cols-[1fr_1fr]">
+        <div><h3 className="flex items-center gap-2 text-xs font-bold text-slate-800"><Zap size={14} className="text-amber-500" /> Performance · PageSpeed Insights</h3>
+          {latestPerformance && performanceMetrics ? <><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{[["LCP", performanceMetrics.lcp_ms, " ms"], ["INP", performanceMetrics.inp_ms, " ms"], ["CLS", performanceMetrics.cls, ""], ["FCP", performanceMetrics.fcp_ms, " ms"], ["Accessibility", performanceMetrics.accessibility_score, "/100"], ["Best practices", performanceMetrics.best_practices_score, "/100"], ["SEO", performanceMetrics.seo_score, "/100"]].map(([label, value, suffix]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">{label}</p><p className="mt-1 text-xs font-semibold text-slate-700">{typeof value === "number" ? `${value}${suffix}` : "—"}</p></div>)}</div><p className="mt-3 text-[10px] text-slate-400">{Number(performanceMetrics.field_data_available) ? "Core Web Vitals use available real-user field data; other timing values are Lighthouse lab measurements." : "No real-user Core Web Vitals sample is available; timing values are Lighthouse lab measurements."}</p></> : <p className="mt-3 rounded-lg bg-slate-50 px-3 py-4 text-[11px] text-slate-500">{latestPerformance?.sanitized_error_message ?? "A daily mobile Lighthouse scan will populate performance and Core Web Vitals here."}</p>}
+        </div>
+        <div><h3 className="text-xs font-bold text-slate-800">Recent history</h3>
+          {httpChecks.length ? <div className="mt-3 flex h-16 items-end gap-1">{httpChecks.slice(0, 30).reverse().map((check, index) => <span key={`${check.checked_at}-${index}`} title={`${check.success ? "Healthy" : "Failed"} · ${check.response_time_ms ?? "—"} ms`} className={`min-w-1 flex-1 rounded-t ${check.success ? "bg-emerald-400" : "bg-red-400"}`} style={{ height: `${Math.max(15, Math.min(100, check.response_time_ms ? 100 - Math.min(check.response_time_ms / 50, 70) : 30))}%` }} />)}</div> : <p className="mt-3 text-[11px] text-slate-500">No uptime history in the last 24 hours.</p>}
+          <div className="mt-3 space-y-1.5">{latestCertificateChecks.slice(0, 3).map((check) => { const asset = certificateAssets.find((item) => item.id === check.asset_id); return <p key={check.id} className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-500">TLS · {asset?.service_name ?? asset?.hostname ?? "Certificate"}</span><span className={check.success ? "text-emerald-700" : "text-red-700"}>{check.success ? "Valid" : check.sanitized_error_message ?? "Invalid"} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>; })}</div>
+          {performanceChecks.slice(0, 3).map((check) => { const metadata = check.metadata as Record<string, number | null>; return <p key={check.id} className="mt-1.5 flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Performance scan</span><span className={check.success ? "text-slate-600" : "text-red-700"}>{check.success ? `${metadata.performance_score ?? "—"}/100` : check.sanitized_error_message ?? "Failed"} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>; })}
+        </div>
+      </div>
+    </section>
 
     <div className="mt-6 grid gap-5 xl:grid-cols-[1.3fr_1fr]">
       <div className="space-y-5">
@@ -88,7 +164,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
       </div>
 
       <div className="space-y-5">
-        {can(context.role, "manage_websites") && <section className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-bold text-slate-900">Website settings</h2><form action={updateWebsite} className="mt-4 space-y-3"><input type="hidden" name="websiteId" value={website.id} /><WebsiteFields clients={clientsResult.data ?? []} website={{ name: website.name, primary_url: website.primary_url, environment: website.environment, client_id: website.client_id }} /><button type="submit" className="h-9 w-full rounded-lg bg-red-600 px-4 text-xs font-semibold text-white hover:bg-red-700">Save website</button></form><form action={archiveWebsite} className="mt-4 border-t border-slate-100 pt-4"><input type="hidden" name="websiteId" value={website.id} /><ConfirmSubmit type="submit" confirmation={`Archive ${website.name}? Its assets and endpoints will be disabled without deleting their history.`} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Archive website</ConfirmSubmit></form></section>}
+        {can(context.role, "manage_websites") && <section className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-bold text-slate-900">Website settings</h2><form action={updateWebsite} className="mt-4 space-y-3"><input type="hidden" name="websiteId" value={website.id} /><WebsiteFields clients={clientsResult.data ?? []} website={{ name: website.name, primary_url: website.primary_url, environment: website.environment, platform: website.platform, client_id: website.client_id }} /><button type="submit" className="h-9 w-full rounded-lg bg-red-600 px-4 text-xs font-semibold text-white hover:bg-red-700">Save website</button></form><form action={archiveWebsite} className="mt-4 border-t border-slate-100 pt-4"><input type="hidden" name="websiteId" value={website.id} /><ConfirmSubmit type="submit" confirmation={`Archive ${website.name}? Its assets and endpoints will be disabled without deleting their history.`} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Archive website</ConfirmSubmit></form></section>}
 
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="border-b border-slate-100 px-5 py-4"><h2 className="text-sm font-bold text-slate-900">Open incidents</h2></div>
           {incidentsResult.data?.length ? <div className="divide-y divide-slate-100">{incidentsResult.data.map((incident) => <div key={incident.id} className="px-5 py-3.5"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-slate-800">{incident.summary}</p><span className="text-[10px] capitalize text-amber-700">{incident.severity}</span></div><p className="mt-1 text-[10px] capitalize text-slate-400">{incident.incident_type.replaceAll("_", " ")} · {incident.status} · started {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(incident.started_at))}</p></div>)}</div> : <p className="px-5 py-7 text-xs text-slate-400">No open incidents.</p>}
@@ -108,6 +184,18 @@ function websiteError(error: string): string {
   if (error === "endpoint") return "The endpoint was not saved. Use a public HTTP(S) URL on port 80 or 443 and valid check settings.";
   if (error === "archive") return "The website could not be archived.";
   return "Website or renewal changes could not be saved.";
+}
+
+function HealthMetric({ label, value, detail, tone = "normal" }: { label: string; value: string; detail: string; tone?: "normal" | "warning" }) {
+  return <div className="px-5 py-4"><p className="text-[10px] font-medium text-slate-400">{label}</p><p className={`mt-1 text-lg font-bold tracking-tight ${tone === "warning" ? "text-amber-700" : "text-slate-900"}`}>{value}</p><p className="mt-1 text-[10px] text-slate-400">{detail}</p></div>;
+}
+
+function formatCheckedAt(value: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", { dateStyle: "short", timeStyle: "short", timeZone }).format(new Date(value));
+}
+
+function getSince24Hours(): string {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 }
 
 function WebsiteLoading() {

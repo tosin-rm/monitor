@@ -438,6 +438,7 @@ create table public.check_results (
   organization_id uuid not null references public.organizations (id) on delete cascade,
   endpoint_id uuid references public.monitoring_endpoints (id) on delete cascade,
   asset_id uuid references public.assets (id) on delete cascade,
+  website_id uuid references public.websites (id) on delete cascade,
   check_type public.check_type not null,
   checked_at timestamptz not null default now(),
   success boolean not null,
@@ -450,6 +451,7 @@ create table public.check_results (
   constraint check_results_target check (
     endpoint_id is not null
     or asset_id is not null
+    or website_id is not null
     or check_type = 'worker_health'
   )
 );

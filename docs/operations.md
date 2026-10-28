@@ -4,7 +4,7 @@ For everyday workflows and role-specific instructions, see the [developer, team,
 
 ## Current implementation boundary
 
-The application includes private Supabase Auth, organization-scoped RLS, client/site/service inventory, manual renewals, a durable notification outbox, Resend/Telegram adapters, expiry reminder evaluation, RDAP parsing/provider helpers, TLS inspection, SSRF-safe HTTP checks, and an independently runnable worker for uptime and certificate checks.
+The application includes private Supabase Auth, organization-scoped RLS, client/site/service inventory, manual renewals, a durable notification outbox, Resend/Telegram adapters, expiry reminder evaluation, RDAP parsing/provider helpers, TLS inspection, SSRF-safe HTTP checks, and an independently runnable worker for uptime, certificate, and daily PageSpeed Insights performance checks.
 
 No external Supabase project or database has been connected in this workspace. The migrations, Auth flows, provider delivery, Cron schedules, and RLS behavior therefore still require deployment verification. RDAP refresh is not yet run by a scheduled worker; WhatsApp delivery, provider-specific hosting APIs, and independent worker-health alerting are not enabled.
 
@@ -54,6 +54,9 @@ Configure only the values required by the deployed surface:
 | `WORKER_CONCURRENCY` | Worker | Number of simultaneous endpoint probes (1–20; default 5) |
 | `WORKER_POLL_INTERVAL_SECONDS` | Worker | Poll cadence (5–3600 seconds; default 30) |
 | `SSL_CHECK_INTERVAL_SECONDS` | Worker | Certificate-check cadence (3600–86400 seconds; default 21600) |
+| `PERFORMANCE_CHECK_INTERVAL_SECONDS` | Worker | PageSpeed scan cadence (21600–604800 seconds; default 86400) |
+| `PAGESPEED_API_KEY` | Worker | Google API key with CrUX API enabled; also used for PageSpeed Insights quota management |
+| `WORDFENCE_INTELLIGENCE_API_KEY` | Vulnerability feed worker only | Wordfence Intelligence v3 bearer token; never expose to browser code |
 
 Keep all secrets in the hosting platform's environment/secret manager. Rotate the Supabase secret key, Resend key, Telegram token, job secrets, and webhook secrets independently; after rotation, update the dashboard, worker, Edge Function, Vault, and webhook configuration as applicable. Never write secret values into logs, audit metadata, screenshots, or support tickets.
 
@@ -125,15 +128,48 @@ select cron.schedule(
 
 The application-level database leases and deduplication protect overlapping invocations. After scheduling, inspect `cron.job`, `cron.job_run_details`, the `net._http_response` records, and the app's `job_runs` table. Alert on repeated failures and stale successful runs. These SQL schedules are instructions only; they have not been installed in a live project.
 
+## Free GitHub Actions schedule
+
+The repository includes `.github/workflows/monitor-jobs.yml` as an alternative to Supabase Cron and an always-on uptime worker. It runs uptime and certificate checks, then dispatches queued notifications, every five minutes. GitHub scheduled workflows can be delayed or skipped during high load; this is not a real-time monitoring guarantee.
+
+In the GitHub repository, open **Settings → Secrets and variables → Actions → New repository secret** and add:
+
+| Secret | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SECRET_KEY` | Server-only Supabase secret key |
+| `DASHBOARD_BASE_URL` | Deployed dashboard origin, for example `https://monitor.example.com` |
+| `MONITORING_JOB_SECRET` | Same secret configured in the dashboard hosting environment |
+
+The workflow does not need `MONITOR_FUNCTION_SECRET`, Supabase Vault, or the `monitor-jobs` Edge Function. It calls the authenticated dashboard notification endpoint directly. The Supabase URL and secret key are available only to the uptime job; notification dispatch uses the dashboard URL and job secret.
+
+After saving the secrets, open **Actions → Monitor scheduled jobs → Run workflow** to test it manually. Check both jobs' logs and the app's `job_runs` and notification history. GitHub Actions minutes and usage limits depend on repository visibility and plan; check the repository's billing/usage page to confirm whether the schedule fits the included allowance.
+
 ## Independent uptime worker
 
-Deploy a separate, long-running Node.js process with network egress restricted to public HTTP/HTTPS destinations. It requires `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and optionally `WORKER_ID`, `WORKER_CONCURRENCY`, `WORKER_POLL_INTERVAL_SECONDS`, and `SSL_CHECK_INTERVAL_SECONDS`.
+Deploy a separate, long-running Node.js process with network egress restricted to public HTTP/HTTPS destinations. It requires `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and optionally `WORKER_ID`, `WORKER_CONCURRENCY`, `WORKER_POLL_INTERVAL_SECONDS`, `SSL_CHECK_INTERVAL_SECONDS`, `PERFORMANCE_CHECK_INTERVAL_SECONDS`, and `PAGESPEED_API_KEY`.
 
 Run it with `npm ci && npm run worker:uptime`. The process polls for due HTTP endpoints and TLS assets, records timestamped results, opens/resolves incidents, and queues outage/recovery/certificate notifications. Use a process supervisor/container orchestrator to restart on failure, capture standard output/error, and alert if the process heartbeat stops. Keep it out of the dashboard request runtime. The worker validates URLs, DNS answers, and each redirect, pins HTTP requests and TLS inspection to a validated address while retaining the hostname for HTTP Host and TLS SNI/certificate verification, permits only ports 80/443, bounds response size and time, and never returns fetched HTTP response bodies to users.
 
 Uptime check results and incident transitions currently use the service-role client from the worker. Limit the worker's network privileges and secret access; do not reuse its service key in browser code. For stronger consistency under concurrent worker instances, test the job lease and incident unique index against the deployed database before scaling horizontally.
 
-The worker does not currently run RDAP refreshes or an independent health-reporting path. Do not advertise automatic RDAP discovery or worker-health alerts as active until a scheduled implementation is deployed and verified.
+The worker does not currently run RDAP refreshes or an independent health-reporting path. PageSpeed Insights supplies mobile Lighthouse lab measurements. When `PAGESPEED_API_KEY` is configured with the Chrome UX Report API enabled, the worker also queries CrUX for mobile Core Web Vitals; PSI field data is used only as a fallback. Field measurements may be absent for sites without a sufficient real-user sample. These scans send each public website URL to Google's APIs. Do not advertise automatic RDAP discovery or worker-health alerts as active until a scheduled implementation is deployed and verified.
+
+## Wordfence Intelligence vulnerability feed
+
+The WordPress security panel can match installed plugin slugs and numeric versions against a centrally cached Wordfence Intelligence **production** feed. Monitor downloads the full feed once for all active WordPress connector sites, retains only plugin advisories for slugs in their latest inventories, and matches versions in Monitor. It does not send the Wordfence key to WordPress sites. Feed matches are vulnerability intelligence, not a malware scan or complete security clearance. WordPress core and theme vulnerabilities are not matched because the connector inventory currently reports plugins only.
+
+The current Wordfence v3 endpoint requires a Wordfence account API token and documents a default limit of one request per 30 minutes. The feed is a complete JSON dump (reported at about 123 MB), not a per-plugin query. Monitor enforces at least 45 minutes between attempts, and the provided schedule runs once per hour at minute 17. A database lease prevents overlapping syncs; a stored attempt/retry time prevents manual reruns from bypassing the interval. HTTP 429 honors `Retry-After` with a 45-minute minimum; other failures use exponential backoff up to 24 hours. A failed refresh keeps the last successful cache. The UI marks data older than two hours stale and displays the last successful sync timestamp. These safeguards are local to this Monitor deployment/API key; do not run another independent fetcher with the same key.
+
+Setup and deployment:
+
+1. Create an API key in Wordfence.com under **Integrations**. It is displayed only once. Keep it in a secret manager.
+2. Apply migrations `0010_wordpress_security_reports.sql` and `0011_wordpress_vulnerability_feed.sql` to Supabase.
+3. Add `WORDFENCE_INTELLIGENCE_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_SECRET_KEY` to the scheduled worker environment. In GitHub Actions, create repository secrets with those exact names. Never use a `NEXT_PUBLIC_` prefix for the Wordfence or Supabase secret.
+4. Deploy `.github/workflows/wordfence-vulnerability-feed.yml`, or schedule `npm run worker:wordpress-vulnerabilities:once` in an equivalent trusted worker. The first successful run happens only when an active WordPress connector has reported at least one plugin slug.
+5. Run the workflow manually once to check credentials and deployment, then inspect `wordpress_vulnerability_feed_state` for `fetched_at`, `records_count`, and `last_error_code`. Manual runs are still subject to Monitor's minimum interval. Confirm the website security page shows a feed sync timestamp and advisory statuses.
+
+The provider's usage limit can change; verify Wordfence's current [v3 feed documentation](https://www.wordfence.com/help/wordfence-intelligence/v3-accessing-and-consuming-the-vulnerability-data-feed/) before increasing the schedule. If a higher request rate is needed, contact Wordfence rather than adding fetchers or retry loops.
 
 ## Vercel, data retention, and recovery
 

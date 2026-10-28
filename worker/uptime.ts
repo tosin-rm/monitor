@@ -37,9 +37,18 @@ type CertificateAsset = {
   last_checked_at: string | null;
 };
 
+type PerformanceWebsite = {
+  id: string;
+  organization_id: string;
+  primary_url: string;
+  performance_checked_at: string | null;
+};
+
 const BATCH_SIZE = 50;
+const PERFORMANCE_BATCH_SIZE = 10;
 const LEASE_SECONDS = 900;
 const SSL_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const PERFORMANCE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function boundedInteger(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name];
@@ -565,14 +574,243 @@ export async function runSslBatch(options: {
   }
 }
 
+type PageSpeedMetric = { percentile?: number; category?: string };
+type CruxMetric = { percentiles?: { p75?: number } };
+
+function metricNumber(metric: PageSpeedMetric | undefined): number | null {
+  return typeof metric?.percentile === "number" && Number.isFinite(metric.percentile)
+    ? Math.round(metric.percentile * 100) / 100
+    : null;
+}
+
+function cruxNumber(metric: CruxMetric | undefined): number | null {
+  return typeof metric?.percentiles?.p75 === "number" && Number.isFinite(metric.percentiles.p75)
+    ? metric.percentiles.p75
+    : null;
+}
+
+async function readCruxFieldData(url: string, apiKey: string): Promise<{
+  lcp_ms: number | null; inp_ms: number | null; cls: number | null;
+  fcp_ms: number | null; ttfb_ms: number | null;
+} | null> {
+  try {
+    const response = await fetch(`https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        url,
+        formFactor: "PHONE",
+        metrics: ["largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift", "first_contentful_paint", "experimental_time_to_first_byte"],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { record?: { metrics?: Record<string, CruxMetric> } };
+    const metrics = payload.record?.metrics;
+    if (!metrics || !Object.keys(metrics).length) return null;
+    return {
+      lcp_ms: cruxNumber(metrics.largest_contentful_paint),
+      inp_ms: cruxNumber(metrics.interaction_to_next_paint),
+      cls: cruxNumber(metrics.cumulative_layout_shift),
+      fcp_ms: cruxNumber(metrics.first_contentful_paint),
+      ttfb_ms: cruxNumber(metrics.experimental_time_to_first_byte),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function checkWebsitePerformance(
+  admin: ReturnType<typeof createAdminClient>,
+  website: PerformanceWebsite,
+  now: Date,
+  apiKey?: string,
+): Promise<void> {
+  const checkedAt = now.toISOString();
+  let success = false;
+  let errorCode: string | null = null;
+  let sanitizedError: string | null = null;
+  const metadata: Record<string, string | number | null> = {
+    provider: "pagespeed_insights",
+    strategy: "mobile",
+    performance_score: null,
+    accessibility_score: null,
+    best_practices_score: null,
+    seo_score: null,
+    lcp_ms: null,
+    inp_ms: null,
+    cls: null,
+    fcp_ms: null,
+    ttfb_ms: null,
+    field_data_available: 0,
+  };
+
+  try {
+    const url = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
+    url.searchParams.set("url", website.primary_url);
+    url.searchParams.set("strategy", "mobile");
+    for (const category of ["performance", "accessibility", "best-practices", "seo"]) {
+      url.searchParams.append("category", category);
+    }
+    if (apiKey) url.searchParams.set("key", apiKey);
+    const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+    if (!response.ok) {
+      errorCode = response.status === 429 ? "provider_rate_limited" : "provider_unavailable";
+      sanitizedError = response.status === 429
+        ? "Performance provider rate limit reached"
+        : "Performance provider could not complete the scan";
+    } else {
+      const payload = await response.json() as {
+        lighthouseResult?: {
+          categories?: Record<string, { score?: number }>;
+          audits?: Record<string, { numericValue?: number }>;
+        };
+        loadingExperience?: { metrics?: Record<string, PageSpeedMetric> };
+        originLoadingExperience?: { metrics?: Record<string, PageSpeedMetric> };
+      };
+      const lighthouse = payload.lighthouseResult;
+      if (!lighthouse?.categories || !lighthouse.audits) {
+        errorCode = "invalid_provider_response";
+        sanitizedError = "Performance provider returned incomplete results";
+      } else {
+        const score = (key: string) => {
+          const value = lighthouse.categories?.[key]?.score;
+          return typeof value === "number" ? Math.round(value * 100) : null;
+        };
+        const audit = (key: string) => {
+          const value = lighthouse.audits?.[key]?.numericValue;
+          return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null;
+        };
+        const field = payload.loadingExperience?.metrics ?? payload.originLoadingExperience?.metrics;
+        const crux = apiKey ? await readCruxFieldData(website.primary_url, apiKey) : null;
+        const lcp = metricNumber(field?.LARGEST_CONTENTFUL_PAINT_MS);
+        const inp = metricNumber(field?.INTERACTION_TO_NEXT_PAINT);
+        const clsValue = metricNumber(field?.CUMULATIVE_LAYOUT_SHIFT_SCORE);
+        const cls = clsValue === null ? null : clsValue / 100;
+        const fcp = metricNumber(field?.FIRST_CONTENTFUL_PAINT_MS);
+        const ttfb = metricNumber(field?.EXPERIMENTAL_TIME_TO_FIRST_BYTE);
+        Object.assign(metadata, {
+          performance_score: score("performance"),
+          accessibility_score: score("accessibility"),
+          best_practices_score: score("best-practices"),
+          seo_score: score("seo"),
+          lcp_ms: crux?.lcp_ms ?? lcp ?? audit("largest-contentful-paint"),
+          inp_ms: crux?.inp_ms ?? inp,
+          cls: crux?.cls ?? cls,
+          fcp_ms: crux?.fcp_ms ?? fcp ?? audit("first-contentful-paint"),
+          ttfb_ms: crux?.ttfb_ms ?? ttfb,
+          field_data_available: Number(Boolean(crux || field && Object.keys(field).length)),
+        });
+        success = true;
+      }
+    }
+  } catch {
+    errorCode = "provider_request_failed";
+    sanitizedError = "Performance provider request failed or timed out";
+  }
+
+  const { error } = await admin.from("check_results").insert({
+    organization_id: website.organization_id,
+    website_id: website.id,
+    check_type: "performance",
+    checked_at: checkedAt,
+    success,
+    error_code: errorCode,
+    sanitized_error_message: sanitizedError,
+    metadata,
+  });
+  if (error) throw error;
+  const { error: updateError } = await admin.from("websites")
+    .update({ performance_checked_at: checkedAt })
+    .eq("id", website.id).eq("organization_id", website.organization_id);
+  if (updateError) throw updateError;
+}
+
+export async function runPerformanceBatch(options: {
+  workerId?: string;
+  now?: Date;
+  concurrency?: number;
+  intervalMs?: number;
+  apiKey?: string;
+} = {}): Promise<{ processed: number; failed: number; skipped: boolean }> {
+  const admin = createAdminClient();
+  const workerId = options.workerId ?? process.env.WORKER_ID ?? `worker-${randomUUID()}`;
+  const concurrency = options.concurrency ?? boundedInteger("WORKER_CONCURRENCY", 5, 1, 20);
+  const lease = await admin.rpc("try_acquire_job_lease", {
+    p_job_name: "performance_check",
+    p_locked_by: workerId,
+    p_lease_seconds: LEASE_SECONDS,
+  });
+  if (lease.error) throw lease.error;
+  if (!lease.data) return { processed: 0, failed: 0, skipped: true };
+
+  const started = Date.now();
+  let runId: string | null = null;
+  let processed = 0;
+  let failed = 0;
+  try {
+    const { data: run, error: runError } = await admin.from("job_runs")
+      .insert({ job_name: "performance_check" }).select("id").single();
+    if (runError) throw runError;
+    runId = run.id;
+    const now = options.now ?? new Date();
+    const intervalMs = options.intervalMs ?? boundedInteger(
+      "PERFORMANCE_CHECK_INTERVAL_SECONDS", PERFORMANCE_CHECK_INTERVAL_MS / 1000, 21_600, 604_800,
+    ) * 1000;
+    const staleBefore = new Date(now.getTime() - intervalMs).toISOString();
+    const { data, error } = await admin.from("websites")
+      .select("id, organization_id, primary_url, performance_checked_at")
+      .eq("active", true)
+      .or(`performance_checked_at.is.null,performance_checked_at.lte.${staleBefore}`)
+      .order("performance_checked_at", { ascending: true, nullsFirst: true })
+      .limit(PERFORMANCE_BATCH_SIZE);
+    if (error) throw error;
+    const due = (data ?? []) as PerformanceWebsite[];
+    const result = await runWithConcurrency(due, concurrency, async (website) => {
+      await checkWebsitePerformance(admin, website, now, options.apiKey ?? process.env.PAGESPEED_API_KEY);
+    });
+    processed = result.processed;
+    failed = result.failed;
+    const { error: finishError } = await admin.from("job_runs").update({
+      finished_at: new Date().toISOString(), success: failed === 0,
+      processed_count: processed, error_count: failed, duration_ms: Date.now() - started,
+    }).eq("id", runId);
+    if (finishError) throw finishError;
+    return { processed, failed, skipped: false };
+  } catch (error) {
+    if (runId) await admin.from("job_runs").update({
+      finished_at: new Date().toISOString(), success: false, processed_count: processed,
+      error_count: Math.max(failed, 1), duration_ms: Date.now() - started,
+      sanitized_error: "Performance worker batch failed",
+    }).eq("id", runId);
+    throw error;
+  } finally {
+    const { error } = await admin.rpc("release_job_lease", {
+      p_job_name: "performance_check", p_locked_by: workerId,
+    });
+    if (error) console.error("Could not release performance lease", { code: error.code });
+  }
+}
+
 async function main() {
   const intervalSeconds = boundedInteger("WORKER_POLL_INTERVAL_SECONDS", 30, 5, 3600);
   const concurrency = boundedInteger("WORKER_CONCURRENCY", 5, 1, 20);
   const workerId = process.env.WORKER_ID ?? `uptime-${randomUUID()}`;
+  const runOnce = process.argv.includes("--once");
   let stopping = false;
   process.once("SIGINT", () => { stopping = true; });
   process.once("SIGTERM", () => { stopping = true; });
   console.info("Uptime worker started", { workerId, intervalSeconds, concurrency });
+
+  if (runOnce) {
+    const result = await runUptimeBatch({ workerId, concurrency });
+    console.info("Uptime worker batch complete", result);
+    const certificates = await runSslBatch({ workerId, concurrency });
+    console.info("Certificate worker batch complete", certificates);
+    const performance = await runPerformanceBatch({ workerId, concurrency });
+    console.info("Performance worker batch complete", performance);
+    return;
+  }
 
   while (!stopping) {
     try {
@@ -580,6 +818,8 @@ async function main() {
       console.info("Uptime worker batch complete", result);
       const certificates = await runSslBatch({ workerId, concurrency });
       console.info("Certificate worker batch complete", certificates);
+      const performance = await runPerformanceBatch({ workerId, concurrency });
+      console.info("Performance worker batch complete", performance);
     } catch (error) {
       console.error("Uptime worker iteration failed", {
         code: error && typeof error === "object" && "code" in error ? error.code : "worker_error",
@@ -590,5 +830,10 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
+  void main().catch((error) => {
+    console.error("Uptime worker stopped unexpectedly", {
+      code: error && typeof error === "object" && "code" in error ? error.code : "worker_error",
+    });
+    process.exitCode = 1;
+  });
 }
