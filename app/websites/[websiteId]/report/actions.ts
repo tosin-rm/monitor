@@ -130,41 +130,40 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     wordpress: website.platform === "wordpress" ? { reportCount: wordpressReportResult.count ?? 0, updateCount: wpUpdateCount, updateUnknownCount: wpUnknownUpdateCount, spamCount: latestWordPressReport?.spam_comment_count ?? 0 } : null,
   }) : null;
   const monthLabel = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1)));
-  const lines: PdfLine[] = [
-    { text: "MONTHLY WEBSITE MAINTENANCE REPORT", size: 18, bold: true, gap: 5 },
-    { text: monthLabel, size: 13, bold: true, gap: 9 },
-    { text: `Client: ${clientName}` },
-    { text: `Website: ${website.name}` },
-    { text: `URL: ${website.primary_url}` },
-    { text: `Platform: ${website.platform === "wordpress" ? "WordPress" : website.platform === "nextjs" ? "Next.js" : website.platform === "other" ? "Other" : "Not specified"}`, gap: 12 },
-    { text: "SERVICE SUMMARY", size: 12, bold: true, gap: 3 },
-    { text: `Uptime: ${uptime === null ? "No data" : `${uptime.toFixed(2)}%`} (${httpChecks.length} checks)` },
+  const platformLabel = website.platform === "wordpress" ? "WordPress" : website.platform === "nextjs" ? "Next.js" : website.platform === "other" ? "Other" : "Not specified";
+  const lines = [
+    { text: "MONTH AT A GLANCE", kind: "section" },
+    { text: `${uptime === null ? "Availability: no check data recorded" : `Availability: ${uptime.toFixed(2)}% across ${httpChecks.length.toLocaleString()} external checks`}`, size: 12, bold: true, gap: 5, kind: uptime !== null && uptime < 99 ? "alert" : undefined },
+    { text: `Response time: ${average === null ? "not measured" : `${average} ms average (P95 ${p95} ms)`}     |     Incidents: ${incidents.length}     |     Performance scans: ${performanceChecks.length}`, size: 9, gap: 8 },
+    { text: "Coverage is based on configured checks and records received during this reporting period. “No data” means no measurement was recorded.", kind: "note", gap: 12 },
+    { text: "SERVICE SUMMARY", kind: "section" },
+    { text: `Uptime: ${uptime === null ? "No data" : `${uptime.toFixed(2)}%`} (${httpChecks.length.toLocaleString()} checks)` },
     { text: `Average response time: ${average === null ? "No data" : `${average} ms`} | P95: ${p95 === null ? "No data" : `${p95} ms`}` },
     { text: `Incidents overlapping period: ${incidents.length}` },
     { text: sslAssets.length ? `TLS checks: ${sslChecks.filter((check) => check.success).length} passed, ${sslChecks.filter((check) => !check.success).length} failed (${sslChecks.length} total)` : "TLS checks: Not monitored; add an SSL certificate asset. Domain registration tracking does not monitor the website certificate." },
-    { text: `Performance scans: ${performanceChecks.length}`, gap: 12 },
-    { text: "WEBSITE AVAILABILITY AND ERRORS", size: 12, bold: true, gap: 3, pageBreak: true },
-    { text: `Failed external HTTP checks: ${failedChecks.length} of ${httpChecks.length} total checks` },
+    { text: `Performance scans: ${performanceChecks.length} | Platform: ${platformLabel}`, gap: 12 },
+    ...(reportSummary ? [
+      { text: "EXECUTIVE NOTES", kind: "section" } as PdfLine,
+      ...reportSummary.overview.map((text): PdfLine => ({ text: `• ${text}` })),
+      { text: "Suggested follow-ups", kind: "subheading", gap: 2 },
+      ...reportSummary.followUps.map((text): PdfLine => ({ text: `- ${text}` })),
+      { text: "Rule-based summary of recorded measurements; missing checks are not treated as passed.", kind: "note", gap: 10 },
+    ] : []),
+    { text: "WEBSITE AVAILABILITY AND ERRORS", kind: "section", pageBreak: true },
+    { text: `Failed external HTTP checks: ${failedChecks.length} of ${httpChecks.length} total checks`, bold: true, kind: failedChecks.length ? "alert" : undefined },
     ...(failureCategories.size ? [...failureCategories].sort((a, b) => b[1] - a[1]).map(([category, count]): PdfLine => ({ text: `${category}: ${count}` })) : [{ text: "No failed external HTTP checks were recorded." }]),
     ...(failedChecks.length ? [
-      { text: "Most recent failed checks (up to 30):", bold: true, gap: 3 },
+      { text: "Most recent failed checks (up to 30):", kind: "subheading", gap: 3 },
       ...failedChecks.slice(0, 30).map((check): PdfLine => ({ text: `${formatDate(check.checked_at, context.timeZone)} | ${endpointUrls.get(check.endpoint_id ?? "") ?? website.primary_url} | ${check.http_status ? `HTTP ${check.http_status}` : check.error_code ?? "Request failed"}${check.sanitized_error_message && check.sanitized_error_message !== "Request failed" ? ` · ${check.sanitized_error_message}` : ""}` })),
     ] : []),
-    { text: "These failures are observed by the external uptime checker; internal WordPress/PHP server logs are not connected.", size: 8, gap: 5 },
-    ...(reportSummary ? [
-      { text: "PLAIN-LANGUAGE SUMMARY", size: 12, bold: true, gap: 3 },
-      ...reportSummary.overview.map((text): PdfLine => ({ text })),
-      { text: "RECOMMENDED FOLLOW-UPS", size: 11, bold: true, gap: 2 },
-      ...reportSummary.followUps.map((text): PdfLine => ({ text: `- ${text}` })),
-      { text: "Rule-based summary from recorded measurements; missing checks are not treated as passed.", size: 8, gap: 10 },
-    ] : []),
-    { text: "PERFORMANCE TREND", size: 12, bold: true, gap: 3 },
+    { text: "Failures are observed by the external uptime checker; internal WordPress/PHP server logs are not connected.", kind: "note", gap: 5 },
+    { text: "PERFORMANCE TREND", kind: "section", pageBreak: true },
     ...(performanceChecks.length ? performanceChecks.map((check): PdfLine => {
       const metrics = check.metadata ?? {};
       return { text: `${formatDate(check.checked_at, context.timeZone)} | score ${value(metrics.performance_score, "/100")} | LCP ${value(metrics.lcp_ms, " ms")} | INP ${value(metrics.inp_ms, " ms")} | CLS ${value(metrics.cls, "")}` };
     }) : [{ text: "No performance scans were recorded during this period." }]),
     ...(website.platform === "wordpress" ? [
-      { text: "WORDPRESS SECURITY SNAPSHOT", size: 12, bold: true, gap: 3 },
+      { text: "WORDPRESS SECURITY SNAPSHOT", kind: "section", gap: 3 },
       ...(latestWordPressReport ? [
         { text: `Inventory reports received: ${wordpressReportResult.count ?? 0}` },
         { text: `Plugin updates available in latest inventory: ${wpUpdateCount}` },
@@ -174,21 +173,21 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
         { text: "Vulnerability findings and suspicious activity: Not checked by this inventory connector." },
       ] : [{ text: "No WordPress inventory was received during this period. Plugin updates, spam counts, vulnerability findings, and suspicious activity are unknown." }]),
     ] : []),
-    { text: "TLS AND CERTIFICATE STATUS", size: 12, bold: true, gap: 3 },
+    { text: "TLS AND CERTIFICATE STATUS", kind: "section", pageBreak: true },
     ...(sslAssets.length ? sslAssets.map((asset): PdfLine => {
       const latest = [...sslChecks].filter((check) => check.asset_id === asset.id).sort((a, b) => b.checked_at.localeCompare(a.checked_at))[0];
       return { text: `${asset.service_name ?? asset.hostname ?? "Certificate"} | ${latest ? latest.success ? "Valid at last check" : latest.sanitized_error_message ?? "Invalid at last check" : "No check in period"} | Expires ${asset.expiry_date ?? "unknown"}` };
     }) : [{ text: "No SSL certificate assets are configured. The primary domain asset tracks registration expiry, not website TLS status." }]),
-    { text: "INCIDENTS", size: 12, bold: true, gap: 3 },
+    { text: "INCIDENTS", kind: "section", gap: 3 },
     ...(incidents.length ? incidents.map((incident): PdfLine => ({ text: `${incident.summary} | ${incident.severity} ${incident.status} | Started ${formatDate(incident.started_at, context.timeZone)}${incident.resolved_at ? ` | Resolved ${formatDate(incident.resolved_at, context.timeZone)}` : " | Open at report time"}` })) : [{ text: "No incidents overlapped this period." }]),
-    { text: "RECORDED MAINTENANCE ACTIVITY", size: 12, bold: true, gap: 3 },
+    { text: "RECORDED MAINTENANCE ACTIVITY", kind: "section", gap: 3 },
     ...(renewals.length ? renewals.map((renewal): PdfLine => {
       const asset = assets.find((item) => item.id === renewal.asset_id);
       return { text: `${asset?.service_name ?? asset?.hostname ?? "Service"} renewal | ${renewal.previous_expiry_date ?? "unknown"} -> ${renewal.new_expiry_date ?? "unknown"} | ${formatDate(renewal.created_at, context.timeZone)}${renewal.confirmation_notes ? ` | ${renewal.confirmation_notes}` : ""}` };
     }) : [{ text: "No renewal actions were recorded. Other maintenance work is not currently logged in Monitor." }]),
-    { text: `Generated ${new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: context.timeZone }).format(new Date())} (${context.timeZone}).`, size: 8, gap: 2 },
-    { text: "Monitoring coverage depends on configured endpoints, certificate assets, worker schedules, and retained check history.", size: 8 },
-  ];
+    { text: `Generated ${new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: context.timeZone }).format(new Date())} (${context.timeZone}).`, kind: "note", gap: 2 },
+    { text: "Monitoring coverage depends on configured endpoints, certificate assets, worker schedules, and retained check history.", kind: "note" },
+  ] satisfies PdfLine[];
   const pdf = createPdf(lines, {
     title: "Website Monthly Maintenance Report",
     period: monthLabel,
