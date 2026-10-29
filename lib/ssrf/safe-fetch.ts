@@ -139,14 +139,30 @@ export async function safeHttpCheck(options: {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) throw new SsrfError("timeout", "Request timed out");
     const safe = await validateDestination(current, lookup, remainingMs);
-    const address = safe.addresses[0];
-    if (!address) throw new SsrfError("dns_failure", "No resolved address");
+    if (!safe.addresses.length) throw new SsrfError("dns_failure", "No resolved address");
+    // Prefer IPv4 because some hosted workers have no outbound IPv6 route. Keep
+    // every candidate pinned to the already validated DNS answers.
+    const addresses = [...safe.addresses].sort((left, right) => left.family - right.family);
+    let response: TransportResponse | null = null;
+    let lastConnectionError: SsrfError | null = null;
+    for (let index = 0; index < addresses.length; index += 1) {
+      const budget = deadline - Date.now();
+      if (budget <= 0) throw new SsrfError("timeout", "Request timed out");
+      const addressesLeft = addresses.length - index;
+      const attemptTimeoutMs = Math.max(1, Math.floor(budget / addressesLeft));
+      try {
+        response = await transport({ safe, address: addresses[index]!, timeoutMs: attemptTimeoutMs });
+        break;
+      } catch (error) {
+        if (error instanceof SsrfError && (error.code === "network_failure" || error.code === "timeout")) {
+          lastConnectionError = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (!response) throw lastConnectionError ?? new SsrfError("network_failure", "Request failed");
     try {
-      const response = await transport({
-        safe,
-        address,
-        timeoutMs: remainingMs,
-      });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         if (!options.followRedirects) {
           return {
