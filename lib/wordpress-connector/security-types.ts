@@ -56,6 +56,7 @@ export type ProposedConnectorSecurityReport = {
     reason?: "checksum_api_missing" | "checksum_list_unavailable" | "checksum_data_invalid" | "wordpress_root_unavailable" | "core_path_unreadable" | "checksum_check_failed" | null;
     checked_at: string | null;
     checked_file_count: number;
+    excluded_content_file_count?: number;
     modified_file_count: number;
     missing_file_count: number;
     modified_files: string[];
