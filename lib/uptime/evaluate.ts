@@ -30,6 +30,10 @@ export function shouldResolveIncident(options: {
 export function classifyWorkerVsSiteFailure(errorCode: string | null | undefined): "site" | "monitor" {
   if ([
     "worker_error",
+    // A transport failure has no HTTP response, so the monitor cannot tell
+    // whether the origin or the checking network prevented the connection.
+    // Keep this out of outage streaks to avoid false-positive incidents.
+    "network_failure",
     "blocked_host",
     "blocked_ip",
     "invalid_url",
