@@ -210,9 +210,19 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
       attachments: [{ filename: `${safeFilename(website.name)}-${month}-maintenance-report.pdf`, content: pdf, contentType: "application/pdf" }],
     });
     accepted = !result.error;
-    if (result.error) console.error("Monthly report email send failed", { code: result.error.name ?? "resend_error" });
-  } catch {
+    if (result.error) {
+      const providerError = result.error as { name?: string; message?: string; statusCode?: number; [key: string]: unknown };
+      const providerCode = typeof providerError.name === "string" ? providerError.name : "resend_error";
+      const providerStatus = typeof providerError.statusCode === "number" ? providerError.statusCode : undefined;
+      const userMessage = sanitizeProviderError(providerError.message);
+      console.error("Monthly report email send failed", { code: providerCode, status: providerStatus, message: userMessage });
+      redirect(`${reportPath}&emailError=${encodeURIComponent(providerCode)}&emailDetail=${encodeURIComponent(userMessage)}`);
+    }
+  } catch (error) {
+    // Next redirects throw to end the server action; preserve that control flow.
+    if (error && typeof error === "object" && "digest" in error) throw error;
     console.error("Monthly report email send failed", { code: "network_failure" });
+    redirect(`${reportPath}&emailError=network_failure`);
   }
   if (!accepted) redirect(`${reportPath}&emailError=send`);
   redirect(`${reportPath}&emailSent=1`);
@@ -264,4 +274,15 @@ function safeFilename(value: string): string {
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function sanitizeProviderError(value: unknown): string {
+  if (typeof value !== "string") return "The provider rejected the request. Check the sender and recipient configuration.";
+  const cleaned = value
+    .replace(/\b(?:re|sk)_[A-Za-z0-9_-]{12,}\b/g, "[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[redacted]")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned.slice(0, 240) || "The provider rejected the request. Check the sender and recipient configuration.";
 }
