@@ -118,6 +118,24 @@ const contractSecuritySchema = z.object({
     if (value.status !== "completed" && value.status !== "stale" && value.findings.length) ctx.addIssue({ code: "custom", message: "Unavailable activity status cannot contain findings" });
     if ((value.status === "completed" || value.status === "stale") && !value.source) ctx.addIssue({ code: "custom", message: "Completed or stale activity requires a source" });
   }),
+  core_integrity: z.object({
+    status: z.enum(["complete", "unavailable", "not_run"]),
+    source: z.literal("wordpress_core_checksums").nullable(),
+    checked_at: z.string().datetime({ offset: true }).nullable(),
+    checked_file_count: z.number().int().min(0).max(10000),
+    modified_file_count: z.number().int().min(0).max(10000),
+    missing_file_count: z.number().int().min(0).max(10000),
+    modified_files: z.array(z.string().min(1).max(500)).max(100),
+    missing_files: z.array(z.string().min(1).max(500)).max(100),
+    findings_truncated: z.boolean(),
+  }).strict().superRefine((value, ctx) => {
+    if (value.status === "complete" && (!value.source || !value.checked_at)) ctx.addIssue({ code: "custom", message: "Completed core integrity checks require a source and timestamp" });
+    if (value.status !== "complete" && (value.source || value.checked_at || value.checked_file_count || value.modified_file_count || value.missing_file_count || value.modified_files.length || value.missing_files.length || value.findings_truncated)) {
+      ctx.addIssue({ code: "custom", message: "Unavailable core integrity checks cannot include results" });
+    }
+    if (value.modified_files.length > value.modified_file_count || value.missing_files.length > value.missing_file_count) ctx.addIssue({ code: "custom", message: "Core integrity finding samples cannot exceed finding counts" });
+    if (value.findings_truncated !== (value.modified_files.length < value.modified_file_count || value.missing_files.length < value.missing_file_count)) ctx.addIssue({ code: "custom", message: "Core integrity truncation marker does not match its finding samples" });
+  }).optional(),
   last_successful_scan_at: z.string().datetime({ offset: true }).nullable(),
   scan_status: z.enum(["completed", "stale", "unavailable", "not_run", "unsupported", "error"]),
 }).strict().superRefine((value, ctx) => {
@@ -163,5 +181,5 @@ export function reportSecurityTimestamps(report: ConnectorReport): Array<string 
     report.security.activity_scan.last_successful_scan_at,
     ...report.security.activity_scan.findings.map((finding) => finding.detected_at),
   ];
-  return [report.security.vulnerability_data.checked_at, report.security.last_successful_scan_at];
+  return [report.security.vulnerability_data.checked_at, report.security.core_integrity?.checked_at, report.security.last_successful_scan_at];
 }

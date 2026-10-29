@@ -59,6 +59,39 @@ describe("WordPress connector security", () => {
     expect(reportSchema.safeParse({ ...base, security: { ...base.security, vulnerability_check: { ...base.security.vulnerability_check, reference_url: "https://attacker.example/advisory" } } }).success).toBe(false);
   });
 
+  it("accepts a bounded core-integrity result without claiming a malware scan", () => {
+    const now = new Date().toISOString();
+    const report = {
+      schema_version: 1.1,
+      request_id: randomUUID(),
+      collected_at: now,
+      wordpress_version: "6.8.3",
+      plugins: [{ slug: "example", name: "Example", version: "1.0", active: true, update_status: "unknown" }],
+      spam_comment_count: 0,
+      security: {
+        vulnerability_data: { status: "unavailable", source: null, checked_at: null, findings: [] },
+        suspicious_activity: { status: "unsupported", source: null, findings: [] },
+        core_integrity: {
+          status: "complete",
+          source: "wordpress_core_checksums",
+          checked_at: now,
+          checked_file_count: 1000,
+          modified_file_count: 1,
+          missing_file_count: 0,
+          modified_files: ["wp-includes/version.php"],
+          missing_files: [],
+          findings_truncated: false,
+        },
+        last_successful_scan_at: null,
+        scan_status: "unsupported",
+      },
+    };
+    expect(reportSchema.safeParse(report).success).toBe(true);
+    const { core_integrity: _coreIntegrity, ...olderSecurity } = report.security;
+    expect(reportSchema.safeParse({ ...report, security: olderSecurity }).success).toBe(true);
+    expect(reportSchema.safeParse({ ...report, security: { ...report.security, core_integrity: { ...report.security.core_integrity, findings_truncated: true } } }).success).toBe(false);
+  });
+
   it("rejects fabricated success timestamps and inconsistent scanner results", () => {
     const now = new Date().toISOString();
     const valid = {

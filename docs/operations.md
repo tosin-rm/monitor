@@ -164,10 +164,11 @@ The current Wordfence v3 endpoint requires a Wordfence account API token and doc
 Setup and deployment:
 
 1. Create an API key in Wordfence.com under **Integrations**. It is displayed only once. Keep it in a secret manager.
-2. Apply migrations `0010_wordpress_security_reports.sql` and `0011_wordpress_vulnerability_feed.sql` to Supabase.
-3. Add `WORDFENCE_INTELLIGENCE_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_SECRET_KEY` to the scheduled worker environment. In GitHub Actions, create repository secrets with those exact names. Never use a `NEXT_PUBLIC_` prefix for the Wordfence or Supabase secret.
-4. Deploy `.github/workflows/wordfence-vulnerability-feed.yml`, or schedule `npm run worker:wordpress-vulnerabilities:once` in an equivalent trusted worker. The first successful run happens only when an active WordPress connector has reported at least one plugin slug.
-5. Run the workflow manually once to check credentials and deployment, then inspect `wordpress_vulnerability_feed_state` for `fetched_at`, `records_count`, and `last_error_code`. Manual runs are still subject to Monitor's minimum interval. Confirm the website security page shows a feed sync timestamp and advisory statuses.
+2. Apply migrations `0010_wordpress_security_reports.sql`, `0011_wordpress_vulnerability_feed.sql`, and `0012_wordpress_connector_schema_11.sql` to Supabase if they are not already applied.
+3. Add `WORDFENCE_INTELLIGENCE_API_KEY` to the Monitor app's **Production** environment in Vercel. This lets the dashboard distinguish an unconfigured feed from a configured one.
+4. In GitHub repository **Settings → Secrets and variables → Actions**, add `WORDFENCE_INTELLIGENCE_API_KEY` and `NEXT_PUBLIC_SUPABASE_URL`. Add the working Supabase service-role key as `SUPABASE_SERVICE_ROLE_KEY`; the workflow maps it to the server-only key variable. `SUPABASE_SECRET_KEY` is also accepted as a fallback if it is a valid server key. Never use a `NEXT_PUBLIC_` prefix for either secret.
+5. Deploy `.github/workflows/wordfence-vulnerability-feed.yml`, or schedule `npm run worker:wordpress-vulnerabilities:once` in an equivalent trusted worker. The first successful run happens only when an active WordPress connector has reported at least one plugin slug.
+6. Run the workflow manually once to check credentials and deployment, then inspect `wordpress_vulnerability_feed_state` for `fetched_at`, `records_count`, and `last_error_code`. Manual runs are still subject to Monitor's minimum interval. Confirm the website security page shows a feed sync timestamp and advisory statuses.
 
 The provider's usage limit can change; verify Wordfence's current [v3 feed documentation](https://www.wordfence.com/help/wordfence-intelligence/v3-accessing-and-consuming-the-vulnerability-data-feed/) before increasing the schedule. If a higher request rate is needed, contact Wordfence rather than adding fetchers or retry loops.
 

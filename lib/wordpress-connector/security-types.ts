@@ -50,6 +50,17 @@ export type ProposedConnectorSecurityReport = {
     source: string | null;
     findings: Array<Record<string, unknown>>;
   };
+  core_integrity?: {
+    status: "complete" | "unavailable" | "not_run";
+    source: "wordpress_core_checksums" | null;
+    checked_at: string | null;
+    checked_file_count: number;
+    modified_file_count: number;
+    missing_file_count: number;
+    modified_files: string[];
+    missing_files: string[];
+    findings_truncated: boolean;
+  };
   last_successful_scan_at: string | null;
   scan_status: "completed" | "stale" | "unavailable" | "not_run" | "unsupported" | "error";
 };
