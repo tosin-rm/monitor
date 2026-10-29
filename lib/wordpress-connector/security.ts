@@ -121,7 +121,7 @@ const contractSecuritySchema = z.object({
   core_integrity: z.object({
     status: z.enum(["complete", "unavailable", "not_run"]),
     source: z.literal("wordpress_core_checksums").nullable(),
-    reason: z.enum(["checksum_api_missing", "checksum_list_unavailable", "wordpress_root_unavailable", "core_path_unreadable", "checksum_check_failed"]).nullable().optional(),
+    reason: z.enum(["checksum_api_missing", "checksum_list_unavailable", "checksum_data_invalid", "wordpress_root_unavailable", "core_path_unreadable", "checksum_check_failed"]).nullable().optional(),
     checked_at: z.string().datetime({ offset: true }).nullable(),
     checked_file_count: z.number().int().min(0).max(10000),
     modified_file_count: z.number().int().min(0).max(10000),

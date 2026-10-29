@@ -53,7 +53,7 @@ export type ProposedConnectorSecurityReport = {
   core_integrity?: {
     status: "complete" | "unavailable" | "not_run";
     source: "wordpress_core_checksums" | null;
-    reason?: "checksum_api_missing" | "checksum_list_unavailable" | "wordpress_root_unavailable" | "core_path_unreadable" | "checksum_check_failed" | null;
+    reason?: "checksum_api_missing" | "checksum_list_unavailable" | "checksum_data_invalid" | "wordpress_root_unavailable" | "core_path_unreadable" | "checksum_check_failed" | null;
     checked_at: string | null;
     checked_file_count: number;
     modified_file_count: number;
