@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import { can } from "@/lib/auth/roles";
 import { sendMonthlyReport } from "@/app/websites/[websiteId]/report/actions";
@@ -24,6 +25,13 @@ type CheckRow = {
 };
 
 export default async function WebsiteReportPage(props: {
+  params: Promise<{ websiteId: string }>;
+  searchParams: Promise<{ month?: string; summary?: string; emailSent?: string; emailError?: string }>;
+}) {
+  return <Suspense fallback={<main className="min-h-screen bg-slate-50 px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto h-96 max-w-5xl animate-pulse rounded-xl bg-white" /></main>}><WebsiteReportContent params={props.params} searchParams={props.searchParams} /></Suspense>;
+}
+
+async function WebsiteReportContent(props: {
   params: Promise<{ websiteId: string }>;
   searchParams: Promise<{ month?: string; summary?: string; emailSent?: string; emailError?: string }>;
 }) {
