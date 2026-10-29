@@ -131,9 +131,10 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   }) : null;
   const monthLabel = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1)));
   const platformLabel = website.platform === "wordpress" ? "WordPress" : website.platform === "nextjs" ? "Next.js" : website.platform === "other" ? "Other" : "Not specified";
-  const lines = [
+  const line = (item: PdfLine): PdfLine => item;
+  const lines: PdfLine[] = [
     { text: "MONTH AT A GLANCE", kind: "section" },
-    { text: `${uptime === null ? "Availability: no check data recorded" : `Availability: ${uptime.toFixed(2)}% across ${httpChecks.length.toLocaleString()} external checks`}`, size: 12, bold: true, gap: 5, kind: uptime !== null && uptime < 99 ? "alert" : undefined },
+    { text: `${uptime === null ? "Availability: no check data recorded" : `Availability: ${uptime.toFixed(2)}% across ${httpChecks.length.toLocaleString()} external checks`}`, size: 12, bold: true, gap: 5, ...(uptime !== null && uptime < 99 ? { kind: "alert" as const } : {}) },
     { text: `Response time: ${average === null ? "not measured" : `${average} ms average (P95 ${p95} ms)`}     |     Incidents: ${incidents.length}     |     Performance scans: ${performanceChecks.length}`, size: 9, gap: 8 },
     { text: "Coverage is based on configured checks and records received during this reporting period. “No data” means no measurement was recorded.", kind: "note", gap: 12 },
     { text: "SERVICE SUMMARY", kind: "section" },
@@ -143,14 +144,14 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     { text: sslAssets.length ? `TLS checks: ${sslChecks.filter((check) => check.success).length} passed, ${sslChecks.filter((check) => !check.success).length} failed (${sslChecks.length} total)` : "TLS checks: Not monitored; add an SSL certificate asset. Domain registration tracking does not monitor the website certificate." },
     { text: `Performance scans: ${performanceChecks.length} | Platform: ${platformLabel}`, gap: 12 },
     ...(reportSummary ? [
-      { text: "EXECUTIVE NOTES", kind: "section" } as PdfLine,
+      line({ text: "EXECUTIVE NOTES", kind: "section" }),
       ...reportSummary.overview.map((text): PdfLine => ({ text: `• ${text}` })),
-      { text: "Suggested follow-ups", kind: "subheading", gap: 2 },
+      line({ text: "Suggested follow-ups", kind: "subheading", gap: 2 }),
       ...reportSummary.followUps.map((text): PdfLine => ({ text: `- ${text}` })),
-      { text: "Rule-based summary of recorded measurements; missing checks are not treated as passed.", kind: "note", gap: 10 },
+      line({ text: "Rule-based summary of recorded measurements; missing checks are not treated as passed.", kind: "note", gap: 10 }),
     ] : []),
     { text: "WEBSITE AVAILABILITY AND ERRORS", kind: "section", pageBreak: true },
-    { text: `Failed external HTTP checks: ${failedChecks.length} of ${httpChecks.length} total checks`, bold: true, kind: failedChecks.length ? "alert" : undefined },
+    { text: `Failed external HTTP checks: ${failedChecks.length} of ${httpChecks.length} total checks`, bold: true, ...(failedChecks.length ? { kind: "alert" as const } : {}) },
     ...(failureCategories.size ? [...failureCategories].sort((a, b) => b[1] - a[1]).map(([category, count]): PdfLine => ({ text: `${category}: ${count}` })) : [{ text: "No failed external HTTP checks were recorded." }]),
     ...(failedChecks.length ? [
       { text: "Most recent failed checks (up to 30):", kind: "subheading", gap: 3 },
@@ -187,7 +188,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     }) : [{ text: "No renewal actions were recorded. Other maintenance work is not currently logged in Monitor." }]),
     { text: `Generated ${new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: context.timeZone }).format(new Date())} (${context.timeZone}).`, kind: "note", gap: 2 },
     { text: "Monitoring coverage depends on configured endpoints, certificate assets, worker schedules, and retained check history.", kind: "note" },
-  ] satisfies PdfLine[];
+  ];
   const pdf = createPdf(lines, {
     title: "Website Monthly Maintenance Report",
     period: monthLabel,

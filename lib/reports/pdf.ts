@@ -1,4 +1,4 @@
-export type PdfLine = { text: string; size?: number; bold?: boolean; gap?: number; pageBreak?: boolean; kind?: "section" | "subheading" | "note" | "alert" };
+export type PdfLine = { text: string; size?: number; bold?: boolean; gap?: number; pageBreak?: boolean; kind?: string };
 
 export function createPdf(lines: PdfLine[], cover?: { title: string; period: string; client: string; website: string; url: string }): Buffer {
   const pages: string[][] = [cover ? createCover(cover) : []];
