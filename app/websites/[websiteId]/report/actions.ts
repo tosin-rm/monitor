@@ -131,7 +131,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     { text: `Uptime: ${uptime === null ? "No data" : `${uptime.toFixed(2)}%`} (${httpChecks.length} checks)` },
     { text: `Average response time: ${average === null ? "No data" : `${average} ms`} | P95: ${p95 === null ? "No data" : `${p95} ms`}` },
     { text: `Incidents overlapping period: ${incidents.length}` },
-    { text: `TLS checks: ${sslChecks.filter((check) => check.success).length} passed, ${sslChecks.filter((check) => !check.success).length} failed (${sslChecks.length} total)` },
+    { text: sslAssets.length ? `TLS checks: ${sslChecks.filter((check) => check.success).length} passed, ${sslChecks.filter((check) => !check.success).length} failed (${sslChecks.length} total)` : "TLS checks: Not monitored; add an SSL certificate asset. Domain registration tracking does not monitor the website certificate." },
     { text: `Performance scans: ${performanceChecks.length}`, gap: 12 },
     ...(reportSummary ? [
       { text: "PLAIN-LANGUAGE SUMMARY", size: 12, bold: true, gap: 3 },
@@ -160,7 +160,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     ...(sslAssets.length ? sslAssets.map((asset): PdfLine => {
       const latest = [...sslChecks].filter((check) => check.asset_id === asset.id).sort((a, b) => b.checked_at.localeCompare(a.checked_at))[0];
       return { text: `${asset.service_name ?? asset.hostname ?? "Certificate"} | ${latest ? latest.success ? "Valid at last check" : latest.sanitized_error_message ?? "Invalid at last check" : "No check in period"} | Expires ${asset.expiry_date ?? "unknown"}` };
-    }) : [{ text: "No SSL certificate assets are configured." }]),
+    }) : [{ text: "No SSL certificate assets are configured. The primary domain asset tracks registration expiry, not website TLS status." }]),
     { text: "INCIDENTS", size: 12, bold: true, gap: 3 },
     ...(incidents.length ? incidents.map((incident): PdfLine => ({ text: `${incident.summary} | ${incident.severity} ${incident.status} | Started ${formatDate(incident.started_at, context.timeZone)}${incident.resolved_at ? ` | Resolved ${formatDate(incident.resolved_at, context.timeZone)}` : " | Open at report time"}` })) : [{ text: "No incidents overlapped this period." }]),
     { text: "RECORDED MAINTENANCE ACTIVITY", size: 12, bold: true, gap: 3 },

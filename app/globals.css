@@ -222,6 +222,10 @@ html[data-theme="dark"] .tone-purple {
 }
 
 @media print {
+  .no-print {
+    display: none !important;
+  }
+
   html,
   body {
     background: #fff !important;
