@@ -121,6 +121,7 @@ const contractSecuritySchema = z.object({
   core_integrity: z.object({
     status: z.enum(["complete", "unavailable", "not_run"]),
     source: z.literal("wordpress_core_checksums").nullable(),
+    reason: z.enum(["checksum_api_missing", "checksum_list_unavailable", "wordpress_root_unavailable", "core_path_unreadable", "checksum_check_failed"]).nullable().optional(),
     checked_at: z.string().datetime({ offset: true }).nullable(),
     checked_file_count: z.number().int().min(0).max(10000),
     modified_file_count: z.number().int().min(0).max(10000),
@@ -130,11 +131,43 @@ const contractSecuritySchema = z.object({
     findings_truncated: z.boolean(),
   }).strict().superRefine((value, ctx) => {
     if (value.status === "complete" && (!value.source || !value.checked_at)) ctx.addIssue({ code: "custom", message: "Completed core integrity checks require a source and timestamp" });
+    if (value.status === "complete" && value.reason) ctx.addIssue({ code: "custom", message: "Completed core checks cannot include an unavailable reason" });
     if (value.status !== "complete" && (value.source || value.checked_at || value.checked_file_count || value.modified_file_count || value.missing_file_count || value.modified_files.length || value.missing_files.length || value.findings_truncated)) {
       ctx.addIssue({ code: "custom", message: "Unavailable core integrity checks cannot include results" });
     }
     if (value.modified_files.length > value.modified_file_count || value.missing_files.length > value.missing_file_count) ctx.addIssue({ code: "custom", message: "Core integrity finding samples cannot exceed finding counts" });
     if (value.findings_truncated !== (value.modified_files.length < value.modified_file_count || value.missing_files.length < value.missing_file_count)) ctx.addIssue({ code: "custom", message: "Core integrity truncation marker does not match its finding samples" });
+  }).optional(),
+  software_integrity: z.object({
+    status: z.enum(["complete", "partial", "unavailable", "not_run"]),
+    source: z.literal("wordpress_org_plugin_checksums").nullable(),
+    checked_at: z.string().datetime({ offset: true }).nullable(),
+    checked_plugin_count: z.number().int().min(0).max(500),
+    checked_file_count: z.number().int().min(0).max(100000),
+    unavailable_plugin_count: z.number().int().min(0).max(500),
+    not_checked_plugin_count: z.number().int().min(0).max(500),
+    modified_file_count: z.number().int().min(0).max(100000),
+    missing_file_count: z.number().int().min(0).max(100000),
+    modified_files: z.array(z.string().min(1).max(500)).max(100),
+    missing_files: z.array(z.string().min(1).max(500)).max(100),
+    findings_truncated: z.boolean(),
+  }).strict().superRefine((value, ctx) => {
+    if ((value.status === "complete" || value.status === "partial") && (!value.source || !value.checked_at || value.checked_plugin_count < 1)) ctx.addIssue({ code: "custom", message: "Plugin checksum results require a source, timestamp, and at least one checked plugin" });
+    if ((value.status === "unavailable" || value.status === "not_run") && (value.source || value.checked_at || value.checked_plugin_count || value.checked_file_count || value.modified_file_count || value.missing_file_count || value.modified_files.length || value.missing_files.length)) ctx.addIssue({ code: "custom", message: "Unavailable plugin checksum results cannot include successful check results" });
+    if (value.modified_files.length > value.modified_file_count || value.missing_files.length > value.missing_file_count) ctx.addIssue({ code: "custom", message: "Plugin checksum finding samples cannot exceed finding counts" });
+    if (value.findings_truncated !== (value.modified_files.length < value.modified_file_count || value.missing_files.length < value.missing_file_count)) ctx.addIssue({ code: "custom", message: "Plugin checksum truncation marker does not match its finding samples" });
+  }).optional(),
+  local_file_scan: z.object({
+    status: z.enum(["complete", "unavailable"]),
+    source: z.literal("monitor_connector_static_checks"),
+    coverage: z.enum(["complete", "partial"]),
+    checked_at: z.string().datetime({ offset: true }).nullable(),
+    checked_file_count: z.number().int().min(0).max(2000),
+    findings: z.array(z.record(z.string(), z.unknown())).max(100),
+    findings_truncated: z.boolean(),
+  }).strict().superRefine((value, ctx) => {
+    if (value.status === "complete" && (!value.checked_at || value.checked_file_count < 1)) ctx.addIssue({ code: "custom", message: "Completed local file scans require a timestamp and at least one checked file" });
+    if (value.status === "unavailable" && (value.checked_at || value.checked_file_count || value.findings.length)) ctx.addIssue({ code: "custom", message: "Unavailable local file scans cannot include successful results" });
   }).optional(),
   last_successful_scan_at: z.string().datetime({ offset: true }).nullable(),
   scan_status: z.enum(["completed", "stale", "unavailable", "not_run", "unsupported", "error"]),
@@ -181,5 +214,5 @@ export function reportSecurityTimestamps(report: ConnectorReport): Array<string 
     report.security.activity_scan.last_successful_scan_at,
     ...report.security.activity_scan.findings.map((finding) => finding.detected_at),
   ];
-  return [report.security.vulnerability_data.checked_at, report.security.core_integrity?.checked_at, report.security.last_successful_scan_at];
+  return [report.security.vulnerability_data.checked_at, report.security.core_integrity?.checked_at, report.security.software_integrity?.checked_at, report.security.local_file_scan?.checked_at, report.security.last_successful_scan_at];
 }

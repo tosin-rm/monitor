@@ -53,12 +53,36 @@ export type ProposedConnectorSecurityReport = {
   core_integrity?: {
     status: "complete" | "unavailable" | "not_run";
     source: "wordpress_core_checksums" | null;
+    reason?: "checksum_api_missing" | "checksum_list_unavailable" | "wordpress_root_unavailable" | "core_path_unreadable" | "checksum_check_failed" | null;
     checked_at: string | null;
     checked_file_count: number;
     modified_file_count: number;
     missing_file_count: number;
     modified_files: string[];
     missing_files: string[];
+    findings_truncated: boolean;
+  };
+  software_integrity?: {
+    status: "complete" | "partial" | "unavailable" | "not_run";
+    source: "wordpress_org_plugin_checksums" | null;
+    checked_at: string | null;
+    checked_plugin_count: number;
+    checked_file_count: number;
+    unavailable_plugin_count: number;
+    not_checked_plugin_count: number;
+    modified_file_count: number;
+    missing_file_count: number;
+    modified_files: string[];
+    missing_files: string[];
+    findings_truncated: boolean;
+  };
+  local_file_scan?: {
+    status: "complete" | "unavailable";
+    source: "monitor_connector_static_checks";
+    coverage: "complete" | "partial";
+    checked_at: string | null;
+    checked_file_count: number;
+    findings: Array<Record<string, unknown>>;
     findings_truncated: boolean;
   };
   last_successful_scan_at: string | null;
