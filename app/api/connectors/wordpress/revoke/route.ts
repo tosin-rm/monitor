@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptConnectorSecret, validHmac } from "@/lib/wordpress-connector/security";
 
-export const runtime = "nodejs";
-
 export async function POST(request: Request) {
   const rawBody = await request.text();
   if (rawBody.length > 4096) return NextResponse.json({ error: "invalid_request" }, { status: 413 });

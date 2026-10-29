@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptConnectorSecret, normalizePluginInventory, reportSchema, reportSecurityTimestamps, validHmac } from "@/lib/wordpress-connector/security";
 import { isConnectorReplayError } from "@/lib/wordpress-connector/status";
 
-export const runtime = "nodejs";
 const MAX_BODY_BYTES = 256 * 1024;
 
 async function readBoundedBody(request: Request): Promise<string | null> {
