@@ -15,9 +15,12 @@ type CheckRecord = {
   id: string;
   checked_at: string;
   success: boolean;
+  http_status: number | null;
+  error_code: string | null;
   response_time_ms: number | null;
   sanitized_error_message: string | null;
   asset_id: string | null;
+  endpoint_id: string | null;
   metadata: Record<string, unknown> | null;
 };
 
@@ -52,7 +55,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const [websiteResult, endpointResult, assetResult, incidentResult] = await Promise.all([
     supabase.from("websites").select("id, name, primary_url, platform, client:clients(name)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle(),
-    supabase.from("monitoring_endpoints").select("id").eq("website_id", websiteId).eq("organization_id", context.organizationId),
+    supabase.from("monitoring_endpoints").select("id, endpoint_url").eq("website_id", websiteId).eq("organization_id", context.organizationId),
     supabase.from("assets").select("id, asset_type, service_name, hostname, expiry_date").eq("website_id", websiteId).eq("organization_id", context.organizationId),
     supabase.from("incidents").select("incident_type, severity, status, started_at, resolved_at, occurrence_count, summary")
       .eq("website_id", websiteId).eq("organization_id", context.organizationId).lt("started_at", end.toISOString())
@@ -104,6 +107,13 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   const p95 = times.length ? times[Math.min(times.length - 1, Math.ceil(times.length * 0.95) - 1)] : null;
   const incidents = incidentResult.data ?? [];
   const renewals = renewalsResult.data ?? [];
+  const failedChecks = httpChecks.filter((check) => !check.success);
+  const endpointUrls = new Map(endpoints.map((endpoint) => [endpoint.id, endpoint.endpoint_url]));
+  const failureCategories = new Map<string, number>();
+  for (const check of failedChecks) {
+    const category = check.http_status ? `HTTP ${check.http_status}` : check.error_code ?? "Request failed";
+    failureCategories.set(category, (failureCategories.get(category) ?? 0) + 1);
+  }
   type ReportPlugin = { slug: string; name: string; version: string; update_status: "available" | "unavailable" | "unknown"; update_version?: string | null };
   const latestWordPressReport = wordpressReportResult.data?.[0] as { plugins: ReportPlugin[]; spam_comment_count: number } | undefined;
   const wpUpdateCount = latestWordPressReport?.plugins.filter((plugin) => plugin.update_status === "available").length ?? 0;
@@ -133,6 +143,14 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     { text: `Incidents overlapping period: ${incidents.length}` },
     { text: sslAssets.length ? `TLS checks: ${sslChecks.filter((check) => check.success).length} passed, ${sslChecks.filter((check) => !check.success).length} failed (${sslChecks.length} total)` : "TLS checks: Not monitored; add an SSL certificate asset. Domain registration tracking does not monitor the website certificate." },
     { text: `Performance scans: ${performanceChecks.length}`, gap: 12 },
+    { text: "WEBSITE AVAILABILITY AND ERRORS", size: 12, bold: true, gap: 3, pageBreak: true },
+    { text: `Failed external HTTP checks: ${failedChecks.length} of ${httpChecks.length} total checks` },
+    ...(failureCategories.size ? [...failureCategories].sort((a, b) => b[1] - a[1]).map(([category, count]): PdfLine => ({ text: `${category}: ${count}` })) : [{ text: "No failed external HTTP checks were recorded." }]),
+    ...(failedChecks.length ? [
+      { text: "Most recent failed checks (up to 30):", bold: true, gap: 3 },
+      ...failedChecks.slice(0, 30).map((check): PdfLine => ({ text: `${formatDate(check.checked_at, context.timeZone)} | ${endpointUrls.get(check.endpoint_id ?? "") ?? website.primary_url} | ${check.http_status ? `HTTP ${check.http_status}` : check.error_code ?? "Request failed"}${check.sanitized_error_message && check.sanitized_error_message !== "Request failed" ? ` · ${check.sanitized_error_message}` : ""}` })),
+    ] : []),
+    { text: "These failures are observed by the external uptime checker; internal WordPress/PHP server logs are not connected.", size: 8, gap: 5 },
     ...(reportSummary ? [
       { text: "PLAIN-LANGUAGE SUMMARY", size: 12, bold: true, gap: 3 },
       ...reportSummary.overview.map((text): PdfLine => ({ text })),
@@ -171,7 +189,13 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     { text: `Generated ${new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: context.timeZone }).format(new Date())} (${context.timeZone}).`, size: 8, gap: 2 },
     { text: "Monitoring coverage depends on configured endpoints, certificate assets, worker schedules, and retained check history.", size: 8 },
   ];
-  const pdf = createPdf(lines);
+  const pdf = createPdf(lines, {
+    title: "Website Monthly Maintenance Report",
+    period: monthLabel,
+    client: clientName,
+    website: website.name,
+    url: website.primary_url,
+  });
   const escapedMessage = escapeHtml(message).replaceAll("\n", "<br />");
   const resend = new Resend(apiKey);
   let accepted = false;
@@ -207,7 +231,7 @@ async function loadChecks(
   const batchSize = 1000;
   for (let offset = 0; ; offset += batchSize) {
     const { data, error } = await client.from("check_results")
-      .select("id, checked_at, success, response_time_ms, sanitized_error_message, asset_id, metadata")
+      .select("id, checked_at, success, http_status, error_code, response_time_ms, sanitized_error_message, asset_id, endpoint_id, metadata")
       .eq("organization_id", organizationId).eq("check_type", checkType)
       .gte("checked_at", start.toISOString()).lt("checked_at", end.toISOString())
       .in(target, ids).order("checked_at", { ascending: false }).range(offset, offset + batchSize - 1);

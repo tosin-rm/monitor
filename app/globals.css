@@ -221,9 +221,65 @@ html[data-theme="dark"] .tone-purple {
   margin: 16mm;
 }
 
+.report-cover {
+  display: none;
+}
+
 @media print {
   .no-print {
     display: none !important;
+  }
+
+  .report-cover {
+    display: grid;
+    position: relative;
+    min-height: 265mm;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+    padding: 14mm;
+    break-after: page;
+    background: #fff;
+  }
+
+  .report-cover-red {
+    position: absolute;
+    inset: 0 0 0 56%;
+    background: #ef3025;
+    clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%, 23% 72%, 0 48%, 34% 24%);
+  }
+
+  .report-cover-content,
+  .report-cover-visual {
+    position: relative;
+    z-index: 1;
+    align-self: center;
+  }
+
+  .report-cover-visual {
+    justify-self: stretch;
+    padding-left: 12mm;
+  }
+
+  .report-cover-frame {
+    min-height: 115mm;
+    padding: 12mm 9mm;
+    background: linear-gradient(145deg, #17243a, #263b58 62%, #101827);
+    box-shadow: 10px 14px 0 rgb(0 0 0 / 14%);
+  }
+
+  .report-cover-frame span,
+  .report-cover-frame p {
+    color: #fff !important;
+  }
+
+  .report-cover-frame .grid span {
+    display: block;
+    height: 3mm;
+    background: #ef3025;
+  }
+
+  .report-page-start {
+    break-before: page;
   }
 
   html,

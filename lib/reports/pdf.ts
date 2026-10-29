@@ -1,9 +1,13 @@
-export type PdfLine = { text: string; size?: number; bold?: boolean; gap?: number };
+export type PdfLine = { text: string; size?: number; bold?: boolean; gap?: number; pageBreak?: boolean };
 
-export function createPdf(lines: PdfLine[]): Buffer {
-  const pages: string[][] = [[]];
+export function createPdf(lines: PdfLine[], cover?: { title: string; period: string; client: string; website: string; url: string }): Buffer {
+  const pages: string[][] = [cover ? createCover(cover) : []];
   let y = 794;
   for (const item of lines) {
+    if (item.pageBreak && pages[pages.length - 1]!.length) {
+      pages.push([]);
+      y = 794;
+    }
     const size = item.size ?? 10;
     const maxChars = Math.max(42, Math.floor(94 * (10 / size)));
     const safeText = toPdfText(item.text);
@@ -50,6 +54,28 @@ export function createPdf(lines: PdfLine[]): Buffer {
   }
   document += `trailer\n<< /Size ${objectCount + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
   return Buffer.from(document, "ascii");
+}
+
+function createCover(cover: { title: string; period: string; client: string; website: string; url: string }): string[] {
+  const commands = [
+    "0.96 0.19 0.14 rg 365 0 230 842 re f",
+    "0.97 0.19 0.14 rg 365 842 m 485 842 l 365 690 l h f",
+    "0.10 0.15 0.23 rg 402 235 154 360 re f",
+    textCommand("MONITOR | WEBSITE CARE", 11, true, 755, 48, "0.85 0.16 0.12 rg"),
+    ...wrapLine(toPdfText(cover.title), 22).map((line, index) => textCommand(line, 28, true, 610 - index * 36, 48)),
+    textCommand(cover.period, 16, false, 535, 48, "0.38 0.43 0.50 rg"),
+    textCommand("CLIENT", 9, true, 400, 48, "0.85 0.16 0.12 rg"),
+    textCommand(cover.client, 13, false, 380, 48),
+    textCommand("WEBSITE", 9, true, 340, 48, "0.85 0.16 0.12 rg"),
+    textCommand(cover.website, 13, false, 320, 48),
+    textCommand("WEBSITE URL", 9, true, 280, 48, "0.85 0.16 0.12 rg"),
+    ...wrapLine(toPdfText(cover.url), 44).map((line, index) => textCommand(line, 11, false, 260 - index * 15, 48)),
+    textCommand("MONTHLY SERVICE REVIEW", 9, true, 555, 418, "0.86 0.88 0.91 rg"),
+    ...wrapLine(toPdfText(cover.website), 16).map((line, index) => textCommand(line, 19, true, 515 - index * 25, 418, "1 1 1 rg")),
+    ...wrapLine("Availability, incidents, performance and maintenance activity.", 25).map((line, index) => textCommand(line, 9, false, 435 - index * 14, 418, "0.88 0.90 0.93 rg")),
+    textCommand("PREPARED BY MONITOR", 9, true, 196, 402, "1 1 1 rg"),
+  ];
+  return commands;
 }
 
 function textCommand(text: string, size: number, bold: boolean, y: number, x = 48, color = "0.08 0.12 0.18 rg"): string {
