@@ -34,6 +34,8 @@ export function classifyWorkerVsSiteFailure(errorCode: string | null | undefined
     // whether the origin or the checking network prevented the connection.
     // Keep this out of outage streaks to avoid false-positive incidents.
     "network_failure",
+    "host_unreachable",
+    "network_unreachable",
     "blocked_host",
     "blocked_ip",
     "invalid_url",

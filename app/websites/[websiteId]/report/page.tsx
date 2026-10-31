@@ -97,7 +97,7 @@ async function WebsiteReportContent(props: {
   const latestWordPressReport = wordpressReportResult.data?.[0] as { collected_at: string; plugins: ReportPlugin[]; spam_comment_count: number } | undefined;
   const wpUpdateCount = latestWordPressReport?.plugins.filter((plugin) => plugin.update_status === "available").length ?? 0;
   const wpUnknownUpdateCount = latestWordPressReport?.plugins.filter((plugin) => plugin.update_status === "unknown").length ?? 0;
-  const confirmedHttpChecks = httpChecks.filter((check) => check.error_code !== "network_failure");
+  const confirmedHttpChecks = httpChecks.filter((check) => !["network_failure", "timeout"].includes(check.error_code ?? ""));
   const sortedResponseTimes = confirmedHttpChecks.map((check) => check.response_time_ms).filter((value): value is number => value !== null).sort((a, b) => a - b);
   const uptime = confirmedHttpChecks.length ? confirmedHttpChecks.filter((check) => check.success).length / confirmedHttpChecks.length * 100 : null;
   const averageResponse = sortedResponseTimes.length ? Math.round(sortedResponseTimes.reduce((total, value) => total + value, 0) / sortedResponseTimes.length) : null;
@@ -108,7 +108,7 @@ async function WebsiteReportContent(props: {
   }
   const incidents = incidentsResult.data ?? [];
   const failedChecks = confirmedHttpChecks.filter((check) => !check.success);
-  const uncertainChecks = httpChecks.filter((check) => check.error_code === "network_failure");
+  const uncertainChecks = httpChecks.filter((check) => ["network_failure", "timeout"].includes(check.error_code ?? ""));
   const dailyAvailability = Array.from({ length: new Date(Date.UTC(year, month, 0)).getUTCDate() }, (_, index) => {
     const day = index + 1;
     const dayChecks = confirmedHttpChecks.filter((check) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: context.timeZone, day: "numeric" }).format(new Date(check.checked_at))) === day);

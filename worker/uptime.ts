@@ -208,6 +208,16 @@ async function checkEndpoint(
     .eq("organization_id", endpoint.organization_id);
   if (endpointError) throw endpointError;
 
+  console.info("Uptime endpoint check recorded", {
+    endpointId: endpoint.id,
+    hostname: new URL(endpoint.endpoint_url).hostname,
+    success,
+    httpStatus,
+    errorCode,
+    responseTimeMs,
+    redirected,
+  });
+
   const { data: activeIncident, error: incidentError } = await admin
     .from("incidents")
     .select("id, occurrence_count")
@@ -435,6 +445,7 @@ export async function runUptimeBatch(options: {
       !endpoint.last_checked_at
       || now.getTime() - new Date(endpoint.last_checked_at).getTime() >= endpoint.check_interval_seconds * 1000,
     );
+    console.info("Uptime endpoints selected", { enabledCandidates: data?.length ?? 0, due: due.length });
     const outcome = await runWithConcurrency(due, concurrency, (endpoint) => checkEndpoint(admin, endpoint, now));
     processed = outcome.processed;
     failed = outcome.failed;
@@ -766,6 +777,11 @@ export async function runPerformanceBatch(options: {
       .limit(PERFORMANCE_BATCH_SIZE);
     if (error) throw error;
     const due = (data ?? []) as PerformanceWebsite[];
+    console.info("PageSpeed websites selected", {
+      activeCandidates: data?.length ?? 0,
+      due: due.length,
+      apiKeyConfigured: Boolean(options.apiKey ?? process.env.PAGESPEED_API_KEY),
+    });
     const result = await runWithConcurrency(due, concurrency, async (website) => {
       await checkWebsitePerformance(admin, website, now, options.apiKey ?? process.env.PAGESPEED_API_KEY);
     });

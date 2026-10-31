@@ -1,14 +1,12 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { RequestOptions } from "node:https";
-import type { ClientRequest, IncomingMessage } from "node:http";
 import type { LookupFunction } from "node:net";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { DnsLookup, ResolvedAddress, SafeUrl } from "@/lib/ssrf/validate";
 import {
   MAX_REDIRECTS,
-  MAX_RESPONSE_BYTES,
   SsrfError,
   validateDestination,
 } from "@/lib/ssrf/validate";
@@ -64,19 +62,32 @@ function nodeTransport(options: {
         "User-Agent": "MonitorUptime/1.0",
         Connection: "close",
       },
-      lookup: ((hostname: string, _lookupOptions: unknown, callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void) => {
+      lookup: ((hostname: string, lookupOptions: { all?: boolean }, callback: (error: NodeJS.ErrnoException | null, address: string | Array<{ address: string; family: number }>, family?: number) => void) => {
         if (hostname !== safe.hostname) {
-          callback(new Error("Unexpected DNS lookup hostname"), "", 0);
+          callback(new Error("Unexpected DNS lookup hostname"), "");
           return;
         }
-        callback(null, address.address, address.family);
+        // Node's autoSelectFamily requests all addresses when a custom lookup
+        // callback is used. Honor that callback shape while still returning
+        // only the one address already validated and pinned for this request.
+        if (lookupOptions?.all) callback(null, [{ address: address.address, family: address.family }]);
+        else callback(null, address.address, address.family);
       }) as LookupFunction,
       ...(safe.url.protocol === "https:" ? { servername: safe.hostname } : {}),
     };
     const request = (safe.url.protocol === "https:" ? httpsRequest : httpRequest)(
       requestOptions,
       (response) => {
-        readResponse(response, request, resolve, reject);
+        // Uptime checks need the status and redirect headers, not the page
+        // body. Resolve as soon as the headers arrive, then close the stream so
+        // large homepages cannot be misreported as endpoint failures.
+        response.once("error", () => {});
+        resolve({
+          status: response.statusCode ?? 0,
+          location: typeof response.headers.location === "string" ? response.headers.location : null,
+          bodyPreview: "",
+        });
+        response.destroy();
       },
     );
     const timer = setTimeout(() => {
@@ -84,38 +95,24 @@ function nodeTransport(options: {
     }, timeoutMs);
     request.once("error", (error) => {
       clearTimeout(timer);
-      reject(error instanceof SsrfError ? error : new SsrfError("network_failure", "Request failed"));
+      if (error instanceof SsrfError) {
+        reject(error);
+        return;
+      }
+      const socketCode = "code" in error && typeof error.code === "string" ? error.code : null;
+      const code = socketCode === "ECONNREFUSED"
+        ? "connection_refused"
+        : socketCode === "ECONNRESET"
+          ? "connection_reset"
+          : socketCode === "EHOSTUNREACH"
+            ? "host_unreachable"
+            : socketCode === "ENETUNREACH"
+              ? "network_unreachable"
+              : "network_failure";
+      reject(new SsrfError(code, "Request failed"));
     });
     request.once("close", () => clearTimeout(timer));
     request.end();
-  });
-}
-
-function readResponse(
-  response: IncomingMessage,
-  request: ClientRequest,
-  resolve: (value: TransportResponse) => void,
-  reject: (reason: Error) => void,
-): void {
-  const chunks: Buffer[] = [];
-  let received = 0;
-  response.on("data", (chunk: Buffer | string) => {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    received += bytes.length;
-    if (received > MAX_RESPONSE_BYTES) {
-      request.destroy(new SsrfError("response_too_large", "Response exceeded size limit"));
-      reject(new SsrfError("response_too_large", "Response exceeded size limit"));
-      return;
-    }
-    chunks.push(bytes);
-  });
-  response.once("error", () => reject(new SsrfError("network_failure", "Response could not be read")));
-  response.once("end", () => {
-    resolve({
-      status: response.statusCode ?? 0,
-      location: typeof response.headers.location === "string" ? response.headers.location : null,
-      bodyPreview: Buffer.concat(chunks).toString("utf8").slice(0, 512),
-    });
   });
 }
 

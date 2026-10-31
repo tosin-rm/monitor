@@ -101,8 +101,8 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     redirect(`${reportPath}&emailError=report`);
   }
 
-  const confirmedHttpChecks = httpChecks.filter((check) => check.error_code !== "network_failure");
-  const uncertainChecks = httpChecks.filter((check) => check.error_code === "network_failure");
+  const confirmedHttpChecks = httpChecks.filter((check) => !["network_failure", "timeout"].includes(check.error_code ?? ""));
+  const uncertainChecks = httpChecks.filter((check) => ["network_failure", "timeout"].includes(check.error_code ?? ""));
   const times = confirmedHttpChecks.map((check) => check.response_time_ms).filter((value): value is number => value !== null).sort((a, b) => a - b);
   const uptime = confirmedHttpChecks.length ? confirmedHttpChecks.filter((check) => check.success).length / confirmedHttpChecks.length * 100 : null;
   const average = times.length ? Math.round(times.reduce((sum, value) => sum + value, 0) / times.length) : null;
