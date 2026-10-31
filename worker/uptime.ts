@@ -37,6 +37,13 @@ type CertificateAsset = {
   last_checked_at: string | null;
 };
 
+type HttpsEndpoint = {
+  id: string;
+  organization_id: string;
+  website_id: string;
+  endpoint_url: string;
+};
+
 type PerformanceWebsite = {
   id: string;
   organization_id: string;
@@ -401,6 +408,38 @@ async function checkCertificateAsset(
   }
 }
 
+async function checkEndpointCertificate(
+  admin: ReturnType<typeof createAdminClient>,
+  endpoint: HttpsEndpoint,
+  now: Date,
+): Promise<void> {
+  const startedAt = Date.now();
+  const hostname = new URL(endpoint.endpoint_url).hostname;
+  const inspection = await inspectCertificate({ hostname, now });
+  const checkedAt = now.toISOString();
+  const { error } = await admin.from("check_results").insert({
+    organization_id: endpoint.organization_id,
+    endpoint_id: endpoint.id,
+    check_type: "ssl",
+    checked_at: checkedAt,
+    success: inspection.success,
+    response_time_ms: Date.now() - startedAt,
+    certificate_not_after: inspection.hostnameMatches ? inspection.validTo : null,
+    error_code: inspection.errorCode,
+    sanitized_error_message: inspection.sanitizedError,
+    metadata: {
+      handshake_ok: inspection.handshakeOk,
+      authorized: inspection.authorized,
+      hostname_matches: inspection.hostnameMatches,
+      valid_from: inspection.hostnameMatches ? inspection.validFrom : null,
+      days_remaining: inspection.daysRemaining,
+      hostname,
+      source: "https_endpoint",
+    },
+  });
+  if (error) throw error;
+}
+
 export async function runUptimeBatch(options: {
   workerId?: string;
   now?: Date;
@@ -527,6 +566,7 @@ export async function runSslBatch(options: {
       86_400,
     ) * 1000;
     const staleBefore = new Date(now.getTime() - Math.min(intervalMs, 60_000)).toISOString();
+    const endpointSslStaleBefore = new Date(now.getTime() - intervalMs).toISOString();
     const { data, error } = await admin
       .from("assets")
       .select("id, organization_id, website_id, hostname, service_name, expiry_date, manual_override, last_checked_at")
@@ -540,11 +580,30 @@ export async function runSslBatch(options: {
     const due = ((data ?? []) as CertificateAsset[]).filter((asset) =>
       !asset.last_checked_at || now.getTime() - new Date(asset.last_checked_at).getTime() >= intervalMs,
     );
-    const result = await runWithConcurrency(due, concurrency, (asset) =>
+    const assetResult = await runWithConcurrency(due, concurrency, (asset) =>
       checkCertificateAsset(admin, asset, now),
     );
-    processed = result.processed;
-    failed = result.failed;
+    const { data: endpointData, error: endpointError } = await admin.from("monitoring_endpoints")
+      .select("id, organization_id, website_id, endpoint_url")
+      .eq("enabled", true)
+      .limit(BATCH_SIZE);
+    if (endpointError) throw endpointError;
+    const httpsEndpoints = ((endpointData ?? []) as HttpsEndpoint[]).filter((endpoint) => {
+      try { return new URL(endpoint.endpoint_url).protocol === "https:"; } catch { return false; }
+    });
+    const endpointIds = httpsEndpoints.map((endpoint) => endpoint.id);
+    const alreadyChecked = endpointIds.length
+      ? await admin.from("check_results").select("endpoint_id")
+        .in("endpoint_id", endpointIds).eq("check_type", "ssl").gte("checked_at", endpointSslStaleBefore)
+      : { data: [], error: null };
+    if (alreadyChecked.error) throw alreadyChecked.error;
+    const checkedEndpointIds = new Set((alreadyChecked.data ?? []).map((check) => check.endpoint_id).filter(Boolean));
+    const endpointDue = httpsEndpoints.filter((endpoint) => !checkedEndpointIds.has(endpoint.id));
+    const endpointResult = await runWithConcurrency(endpointDue, concurrency, (endpoint) =>
+      checkEndpointCertificate(admin, endpoint, now),
+    );
+    processed = assetResult.processed + endpointResult.processed;
+    failed = assetResult.failed + endpointResult.failed;
     const { error: finishError } = await admin
       .from("job_runs")
       .update({
@@ -707,7 +766,7 @@ async function checkWebsitePerformance(
           seo_score: score("seo"),
           lcp_ms: crux?.lcp_ms ?? lcp ?? audit("largest-contentful-paint"),
           inp_ms: crux?.inp_ms ?? inp,
-          cls: crux?.cls ?? cls,
+          cls: crux?.cls ?? cls ?? audit("cumulative-layout-shift"),
           fcp_ms: crux?.fcp_ms ?? fcp ?? audit("first-contentful-paint"),
           ttfb_ms: crux?.ttfb_ms ?? ttfb,
           field_data_available: Number(Boolean(crux || field && Object.keys(field).length)),
