@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/roles";
 import { getAuthContext } from "@/lib/auth/session";
 import { normalizeDomain, normalizeHttpUrl } from "@/lib/urls";
 import { parsePublicHttpUrl } from "@/lib/ssrf/validate";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const optionalText = (max: number) => z.string().trim().max(max).transform((value) => value || null);
@@ -314,8 +315,10 @@ export async function removeMonitoringEndpoint(formData: FormData): Promise<void
   if (!z.string().uuid().safeParse(endpointId).success || !z.string().uuid().safeParse(websiteId).success) {
     redirect("/websites?error=invalid");
   }
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("monitoring_endpoints").delete()
+  // The authenticated role intentionally has no DELETE grant on this table.
+  // Authorization is checked above; use the service role for this scoped delete.
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("monitoring_endpoints").delete()
     .eq("id", endpointId)
     .eq("website_id", websiteId)
     .eq("organization_id", context.organizationId)
