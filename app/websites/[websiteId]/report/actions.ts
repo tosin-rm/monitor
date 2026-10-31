@@ -101,13 +101,15 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
     redirect(`${reportPath}&emailError=report`);
   }
 
-  const times = httpChecks.map((check) => check.response_time_ms).filter((value): value is number => value !== null).sort((a, b) => a - b);
-  const uptime = httpChecks.length ? httpChecks.filter((check) => check.success).length / httpChecks.length * 100 : null;
+  const confirmedHttpChecks = httpChecks.filter((check) => check.error_code !== "network_failure");
+  const uncertainChecks = httpChecks.filter((check) => check.error_code === "network_failure");
+  const times = confirmedHttpChecks.map((check) => check.response_time_ms).filter((value): value is number => value !== null).sort((a, b) => a - b);
+  const uptime = confirmedHttpChecks.length ? confirmedHttpChecks.filter((check) => check.success).length / confirmedHttpChecks.length * 100 : null;
   const average = times.length ? Math.round(times.reduce((sum, value) => sum + value, 0) / times.length) : null;
   const p95 = times.length ? times[Math.min(times.length - 1, Math.ceil(times.length * 0.95) - 1)] : null;
   const incidents = incidentResult.data ?? [];
   const renewals = renewalsResult.data ?? [];
-  const failedChecks = httpChecks.filter((check) => !check.success);
+  const failedChecks = confirmedHttpChecks.filter((check) => !check.success);
   const endpointUrls = new Map(endpoints.map((endpoint) => [endpoint.id, endpoint.endpoint_url]));
   const failureCategories = new Map<string, number>();
   for (const check of failedChecks) {
@@ -120,7 +122,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   const wpUnknownUpdateCount = latestWordPressReport?.plugins.filter((plugin) => plugin.update_status === "unknown").length ?? 0;
   const reportSummary = includeSummary ? buildReportSummary({
     uptimePercent: uptime,
-    uptimeChecks: httpChecks.length,
+    uptimeChecks: confirmedHttpChecks.length,
     averageResponseMs: average,
     p95ResponseMs: p95,
     incidents,
@@ -134,11 +136,11 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   const line = (item: PdfLine): PdfLine => item;
   const lines: PdfLine[] = [
     { text: "MONTH AT A GLANCE", kind: "section" },
-    { text: `${uptime === null ? "Availability: no check data recorded" : `Availability: ${uptime.toFixed(2)}% across ${httpChecks.length.toLocaleString()} external checks`}`, size: 12, bold: true, gap: 5, ...(uptime !== null && uptime < 99 ? { kind: "alert" as const } : {}) },
+    { text: `${uptime === null ? "Availability: no confirmed check data recorded" : `Availability: ${uptime.toFixed(2)}% across ${confirmedHttpChecks.length.toLocaleString()} confirmed external checks`}`, size: 12, bold: true, gap: 5, ...(uptime !== null && uptime < 99 ? { kind: "alert" as const } : {}) },
     { text: `Response time: ${average === null ? "not measured" : `${average} ms average (P95 ${p95} ms)`}     |     Incidents: ${incidents.length}     |     Performance scans: ${performanceChecks.length}`, size: 9, gap: 8 },
     { text: "Coverage is based on configured checks and records received during this reporting period. “No data” means no measurement was recorded.", kind: "note", gap: 12 },
     { text: "SERVICE SUMMARY", kind: "section" },
-    { text: `Uptime: ${uptime === null ? "No data" : `${uptime.toFixed(2)}%`} (${httpChecks.length.toLocaleString()} checks)` },
+    { text: `Uptime: ${uptime === null ? "No data" : `${uptime.toFixed(2)}%`} (${confirmedHttpChecks.length.toLocaleString()} confirmed checks; ${uncertainChecks.length.toLocaleString()} unconfirmed)` },
     { text: `Average response time: ${average === null ? "No data" : `${average} ms`} | P95: ${p95 === null ? "No data" : `${p95} ms`}` },
     { text: `Incidents overlapping period: ${incidents.length}` },
     { text: sslAssets.length ? `TLS checks: ${sslChecks.filter((check) => check.success).length} passed, ${sslChecks.filter((check) => !check.success).length} failed (${sslChecks.length} total)` : "TLS checks: Not monitored; add an SSL certificate asset. Domain registration tracking does not monitor the website certificate." },
@@ -151,13 +153,13 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
       line({ text: "Rule-based summary of recorded measurements; missing checks are not treated as passed.", kind: "note", gap: 10 }),
     ] : []),
     { text: "WEBSITE AVAILABILITY AND ERRORS", kind: "section", pageBreak: true },
-    { text: `Failed external HTTP checks: ${failedChecks.length} of ${httpChecks.length} total checks`, bold: true, ...(failedChecks.length ? { kind: "alert" as const } : {}) },
+    { text: `Failed external HTTP checks: ${failedChecks.length} of ${confirmedHttpChecks.length} confirmed checks; ${uncertainChecks.length} monitor network failures were unconfirmed`, bold: true, ...(failedChecks.length ? { kind: "alert" as const } : {}) },
     ...(failureCategories.size ? [...failureCategories].sort((a, b) => b[1] - a[1]).map(([category, count]): PdfLine => ({ text: `${category}: ${count}` })) : [{ text: "No failed external HTTP checks were recorded." }]),
     ...(failedChecks.length ? [
       { text: "Most recent failed checks (up to 30):", kind: "subheading", gap: 3 },
       ...failedChecks.slice(0, 30).map((check): PdfLine => ({ text: `${formatDate(check.checked_at, context.timeZone)} | ${endpointUrls.get(check.endpoint_id ?? "") ?? website.primary_url} | ${check.http_status ? `HTTP ${check.http_status}` : check.error_code ?? "Request failed"}${check.sanitized_error_message && check.sanitized_error_message !== "Request failed" ? ` · ${check.sanitized_error_message}` : ""}` })),
     ] : []),
-    { text: "Failures are observed by the external uptime checker; internal WordPress/PHP server logs are not connected.", kind: "note", gap: 5 },
+    { text: `${uncertainChecks.length} network failure(s) had no HTTP response, so site status is unconfirmed; these are excluded from availability and confirmed failure totals. Internal WordPress/PHP server logs are not connected.`, kind: "note", gap: 5 },
     { text: "PERFORMANCE TREND", kind: "section", pageBreak: true },
     ...(performanceChecks.length ? performanceChecks.map((check): PdfLine => {
       const metrics = check.metadata ?? {};

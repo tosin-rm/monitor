@@ -45,5 +45,8 @@ export function classifyWorkerVsSiteFailure(errorCode: string | null | undefined
   ].includes(errorCode ?? "")) {
     return "monitor";
   }
+  // DNS failure means the configured hostname cannot currently resolve, which
+  // is a real availability problem for that endpoint rather than a checker
+  // policy rejection.
   return "site";
 }

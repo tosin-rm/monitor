@@ -61,7 +61,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   const performanceMetrics = latestPerformance?.metadata as Record<string, string | number | null> | undefined;
   const since24h = getSince24Hours();
   const recentHttpChecks = endpointIds.length
-    ? await supabase.from("check_results").select("success, response_time_ms, checked_at")
+    ? await supabase.from("check_results").select("success, response_time_ms, checked_at, error_code")
       .eq("organization_id", context.organizationId).in("endpoint_id", endpointIds)
       .eq("check_type", "http").gte("checked_at", since24h).order("checked_at", { ascending: false }).limit(500)
     : { data: [], error: null };
@@ -69,7 +69,9 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
     console.error("Website health summary query failed", { code: recentHttpChecks.error.code });
     throw new Error("Website health history could not be loaded.");
   }
-  const httpChecks = recentHttpChecks.data ?? [];
+  // A missing response tells us the monitor could not confirm site status; it
+  // must not be counted as an outage in the availability estimate.
+  const httpChecks = (recentHttpChecks.data ?? []).filter((check) => check.error_code !== "network_failure");
   const uptimePercent = httpChecks.length
     ? (httpChecks.filter((check) => check.success).length / httpChecks.length) * 100
     : null;
@@ -91,16 +93,24 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
     if (check.asset_id && !latestCertificateByAsset.has(check.asset_id)) latestCertificateByAsset.set(check.asset_id, check);
   }
   const latestCertificateChecks = [...latestCertificateByAsset.values()];
-  const healthWarning = endpoints.some((endpoint) => endpoint.enabled && endpoint.consecutive_failures >= endpoint.consecutive_failure_threshold)
-    || latestCertificateChecks.some((check) => !check.success);
-  const healthLabel = healthWarning ? "Needs attention" : endpoints.some((endpoint) => endpoint.enabled) || certificateAssets.length ? "Monitoring active" : "No checks configured";
   const historyResult = endpointIds.length
-    ? await supabase.from("check_results").select("endpoint_id, checked_at, success, http_status, response_time_ms, error_code, sanitized_error_message").eq("organization_id", context.organizationId).in("endpoint_id", endpointIds).order("checked_at", { ascending: false }).limit(12)
+    ? await supabase.from("check_results").select("endpoint_id, checked_at, success, http_status, response_time_ms, error_code, sanitized_error_message").eq("organization_id", context.organizationId).in("endpoint_id", endpointIds).order("checked_at", { ascending: false }).limit(500)
     : { data: [], error: null };
   if (historyResult.error) {
     console.error("Endpoint history query failed", { code: historyResult.error.code });
     throw new Error("Website monitoring history could not be loaded.");
   }
+  const latestEndpointChecks = new Map<string, NonNullable<typeof historyResult.data>[number]>();
+  for (const check of historyResult.data ?? []) {
+    if (check.endpoint_id && !latestEndpointChecks.has(check.endpoint_id)) latestEndpointChecks.set(check.endpoint_id, check);
+  }
+  const healthWarning = endpoints.some((endpoint) => {
+    if (!endpoint.enabled) return false;
+    const latest = latestEndpointChecks.get(endpoint.id);
+    return endpoint.consecutive_failures >= endpoint.consecutive_failure_threshold
+      || Boolean(latest && !latest.success && !["network_failure", "timeout"].includes(latest.error_code ?? ""));
+  }) || latestCertificateChecks.some((check) => !check.success);
+  const healthLabel = healthWarning ? "Needs attention" : endpoints.some((endpoint) => endpoint.enabled) || certificateAssets.length ? "Monitoring active" : "No checks configured";
   return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/websites" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Websites</Link>
     <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-slate-400">{client?.name ?? "Client"} · <span className="capitalize">{website.environment}</span></p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{website.name}</h1><a href={website.primary_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-red-700 hover:underline">{website.primary_url}<ExternalLink size={12} /></a></div><div className="flex flex-wrap items-center gap-2"><Link href={`/websites/${website.id}/report`} className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">Monthly report</Link><span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active website</span></div></div>
@@ -154,11 +164,12 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="text-sm font-bold text-slate-900">Uptime endpoints</h2><p className="mt-0.5 text-[11px] text-slate-400">Checks will run independently on the monitoring schedule.</p></div><Globe2 size={16} className="text-slate-400" /></div>
           {endpoints.length ? <div className="divide-y divide-slate-100">{endpoints.map((endpoint) => {
+            const latestCheck = latestEndpointChecks.get(endpoint.id);
+            const networkUncertain = latestCheck && !latestCheck.success && ["network_failure", "timeout"].includes(latestCheck.error_code ?? "");
             const down = endpoint.consecutive_failures >= endpoint.consecutive_failure_threshold;
-            const latestCheck = historyResult.data?.find((check) => check.endpoint_id === endpoint.id);
-            const networkUncertain = latestCheck && !latestCheck.success && latestCheck.error_code === "network_failure";
+            const latestFailed = latestCheck ? !latestCheck.success && !networkUncertain : down;
             const duplicateEndpoint = endpoint.enabled && endpoints.some((other) => other.id !== endpoint.id && other.enabled && other.endpoint_url.replace(/\/$/, "") === endpoint.endpoint_url.replace(/\/$/, ""));
-            return <div key={endpoint.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5"><span className={`h-2 w-2 rounded-full ${!endpoint.enabled ? "bg-slate-300" : networkUncertain ? "bg-amber-400" : down ? "bg-red-500" : endpoint.last_success_at ? "bg-emerald-500" : "bg-amber-400"}`} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{endpoint.endpoint_url}</p><p className="mt-1 text-[10px] text-slate-400">{!endpoint.enabled ? "Disabled" : networkUncertain ? "Check uncertain · network failure, site status unconfirmed" : down ? `Down · ${endpoint.consecutive_failures} consecutive failures` : endpoint.last_success_at ? `Healthy · checked ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(new Date(endpoint.last_success_at))}` : "Awaiting first check"} · every {Math.round(endpoint.check_interval_seconds / 60)} min{duplicateEndpoint ? " · duplicate URL; consider keeping one enabled endpoint" : ""}</p></div>
+            return <div key={endpoint.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5"><span className={`h-2 w-2 rounded-full ${!endpoint.enabled ? "bg-slate-300" : networkUncertain ? "bg-amber-400" : latestFailed ? "bg-red-500" : latestCheck?.success || endpoint.last_success_at ? "bg-emerald-500" : "bg-amber-400"}`} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{endpoint.endpoint_url}</p><p className="mt-1 text-[10px] text-slate-400">{!endpoint.enabled ? "Disabled" : networkUncertain ? `Status unconfirmed · ${latestCheck?.error_code === "timeout" ? "check timed out" : "monitor network failure"}` : latestFailed ? `${down ? `Down · ${endpoint.consecutive_failures} consecutive failures` : "Latest check failed"}${latestCheck?.http_status ? ` · HTTP ${latestCheck.http_status}` : latestCheck?.error_code ? ` · ${latestCheck.error_code}` : ""}` : latestCheck?.success || endpoint.last_success_at ? `Healthy · checked ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(new Date(endpoint.last_checked_at ?? endpoint.last_success_at!))}` : "Awaiting first check"} · every {Math.round(endpoint.check_interval_seconds / 60)} min{duplicateEndpoint ? " · duplicate URL; consider keeping one enabled endpoint" : ""}</p></div>
               {can(context.role, "manage_monitoring") && <form action={setMonitoringEndpoint}><input type="hidden" name="endpointId" value={endpoint.id} /><input type="hidden" name="websiteId" value={website.id} /><input type="hidden" name="enabled" value={String(!endpoint.enabled)} /><button type="submit" className="rounded-md border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">{endpoint.enabled ? "Disable" : "Enable"}</button></form>}
             </div>;
           })}</div> : <p className="px-5 py-8 text-xs text-slate-400">No uptime checks are configured.</p>}
@@ -175,7 +186,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
         </section>
 
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><CalendarClock size={15} className="text-slate-400" /><h2 className="text-sm font-bold text-slate-900">Recent check results</h2></div>
-          {historyResult.data?.length ? <div className="divide-y divide-slate-100">{historyResult.data.map((check, index) => <div key={`${check.endpoint_id}-${check.checked_at}-${index}`} className="flex items-center gap-2 px-5 py-3"><span className={`h-2 w-2 rounded-full ${check.success ? "bg-emerald-500" : "bg-red-500"}`} /><div className="min-w-0 flex-1"><p className="truncate text-[11px] font-medium text-slate-700">{check.success ? `HTTP ${check.http_status ?? "OK"}` : check.http_status ? `HTTP ${check.http_status} · ${check.sanitized_error_message ?? "Unexpected response"}` : `${check.sanitized_error_message ?? "Request failed"}${check.error_code ? ` · ${check.error_code}` : ""}`}</p><p className="mt-0.5 text-[10px] text-slate-400">{new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(new Date(check.checked_at))}</p></div><span className="text-[10px] text-slate-500">{check.response_time_ms === null ? "—" : `${check.response_time_ms} ms`}</span></div>)}</div> : <p className="px-5 py-7 text-xs text-slate-400">No completed checks to show yet.</p>}
+          {historyResult.data?.length ? <div className="divide-y divide-slate-100">{historyResult.data.map((check, index) => { const uncertain = !check.success && check.error_code === "network_failure"; return <div key={`${check.endpoint_id}-${check.checked_at}-${index}`} className="flex items-center gap-2 px-5 py-3"><span className={`h-2 w-2 rounded-full ${check.success ? "bg-emerald-500" : uncertain ? "bg-amber-400" : "bg-red-500"}`} /><div className="min-w-0 flex-1"><p className="truncate text-[11px] font-medium text-slate-700">{uncertain ? "Status unconfirmed · monitor network failure" : check.success ? `HTTP ${check.http_status ?? "OK"}` : check.http_status ? `HTTP ${check.http_status} · ${check.sanitized_error_message ?? "Unexpected response"}` : `${check.sanitized_error_message ?? "Request failed"}${check.error_code ? ` · ${check.error_code}` : ""}`}</p><p className="mt-0.5 text-[10px] text-slate-400">{new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(new Date(check.checked_at))}</p></div><span className="text-[10px] text-slate-500">{check.response_time_ms === null ? "—" : `${check.response_time_ms} ms`}</span></div>; })}</div> : <p className="px-5 py-7 text-xs text-slate-400">No completed checks to show yet.</p>}
         </section>
       </div>
     </div>
