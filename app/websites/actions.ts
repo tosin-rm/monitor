@@ -306,3 +306,24 @@ export async function setMonitoringEndpoint(formData: FormData): Promise<void> {
   }
   redirect(`/websites/${websiteId}`);
 }
+
+export async function removeMonitoringEndpoint(formData: FormData): Promise<void> {
+  const context = await requireManager("manage_monitoring");
+  const endpointId = String(formData.get("endpointId") ?? "");
+  const websiteId = String(formData.get("websiteId") ?? "");
+  if (!z.string().uuid().safeParse(endpointId).success || !z.string().uuid().safeParse(websiteId).success) {
+    redirect("/websites?error=invalid");
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("monitoring_endpoints").delete()
+    .eq("id", endpointId)
+    .eq("website_id", websiteId)
+    .eq("organization_id", context.organizationId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    console.error("Monitoring endpoint removal failed", { code: error?.code ?? "not_found" });
+    redirect(`/websites/${websiteId}?error=endpoint_remove`);
+  }
+  redirect(`/websites/${websiteId}?success=endpoint_removed`);
+}
