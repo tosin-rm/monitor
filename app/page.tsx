@@ -80,14 +80,14 @@ async function DashboardContent() {
     activityResult,
   ] = await Promise.all([
     supabase.from("clients").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true),
-    supabase.from("websites").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true),
-    supabase.from("assets").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).gte("expiry_date", today).lte("expiry_date", soonDate),
-    supabase.from("assets").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).lt("expiry_date", today).neq("renewal_status", "cancelled"),
+    supabase.from("websites").select("id, client:clients!inner(active)", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).eq("client.active", true),
+    supabase.from("assets").select("id, website:websites!inner(active, client:clients!inner(active))", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).eq("website.active", true).eq("website.client.active", true).gte("expiry_date", today).lte("expiry_date", soonDate),
+    supabase.from("assets").select("id, website:websites!inner(active, client:clients!inner(active))", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).eq("website.active", true).eq("website.client.active", true).lt("expiry_date", today).neq("renewal_status", "cancelled"),
     supabase.from("incidents").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("incident_type", "outage").in("status", ["open", "acknowledged", "investigating"]),
     supabase.from("incidents").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["open", "acknowledged", "investigating"]),
-    supabase.from("assets").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).eq("asset_type", "ssl_certificate").lte("expiry_date", soonDate).neq("renewal_status", "cancelled"),
+    supabase.from("assets").select("id, website:websites!inner(active, client:clients!inner(active))", { count: "exact", head: true }).eq("organization_id", organizationId).eq("active", true).eq("website.active", true).eq("website.client.active", true).eq("asset_type", "ssl_certificate").lte("expiry_date", soonDate).neq("renewal_status", "cancelled"),
     supabase.from("notifications").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "failed").gte("created_at", weekAgo),
-    supabase.from("assets").select("id, asset_type, expiry_date, service_name, hostname, renewal_responsibility, website:websites(name, client:clients(name))").eq("organization_id", organizationId).eq("active", true).gte("expiry_date", today).lte("expiry_date", soonDate).order("expiry_date", { ascending: true }).limit(6),
+    supabase.from("assets").select("id, asset_type, expiry_date, service_name, hostname, renewal_responsibility, website:websites!inner(active, name, client:clients!inner(active, name))").eq("organization_id", organizationId).eq("active", true).eq("website.active", true).eq("website.client.active", true).gte("expiry_date", today).lte("expiry_date", soonDate).order("expiry_date", { ascending: true }).limit(6),
     can(context.role, "view_audit")
       ? supabase.from("audit_logs").select("id, action, entity_type, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(5)
       : Promise.resolve({ data: [], error: null, count: null, status: 200, statusText: "OK" }),

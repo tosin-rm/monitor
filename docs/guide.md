@@ -200,7 +200,7 @@ If you cannot access a page or action, ask an owner/admin to confirm your role a
 
 - Use the **Light/Dark** control at the bottom-right of the screen to change the dashboard appearance. Your choice is saved in this browser and applies on your next visit; it does not change another teammate's setting.
 - Check **Dashboard** for expiring/expired assets, downtime, incidents, and recent notification outcomes.
-- Use **Clients** and **Websites** to update records; archive records rather than deleting them when a client engagement ends. Archiving preserves operational history.
+- Use **Clients** and **Websites** to update records. Set a record to **On hold** or **Transferred** to pause monitoring while keeping history, or **Archived** when it should leave active work. Use the status filter to find inactive records and set them back to **Active** when monitoring should resume. These status changes do not permanently delete data.
 - Use **Inventory** to filter services and review expiry date, provenance, verification, renewal status, and renewal history.
 - Use **Expiry calendar** to plan renewal work. Calendar days use the organization's configured timezone.
 - On renewal, confirm the new expiry date and record the confirmation method and useful notes. Do not mark a service renewed only because a provider page is reachable.

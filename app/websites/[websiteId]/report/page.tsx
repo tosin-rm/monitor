@@ -51,7 +51,7 @@ async function WebsiteReportContent(props: {
   const supabase = await createClient();
 
   const [websiteResult, endpointResult, assetResult, incidentsResult] = await Promise.all([
-    supabase.from("websites").select("id, name, primary_url, platform, client_id, client:clients(name, contact_email)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle(),
+    supabase.from("websites").select("id, name, primary_url, platform, client_id, client:clients!inner(name, contact_email, active)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).eq("client.active", true).maybeSingle(),
     supabase.from("monitoring_endpoints").select("id, endpoint_url").eq("website_id", websiteId).eq("organization_id", context.organizationId),
     supabase.from("assets").select("id, asset_type, service_name, hostname, expiry_date, renewal_status").eq("website_id", websiteId).eq("organization_id", context.organizationId),
     supabase.from("incidents").select("id, incident_type, severity, status, started_at, last_observed_at, resolved_at, occurrence_count, summary")

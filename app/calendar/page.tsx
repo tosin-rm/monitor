@@ -23,9 +23,11 @@ async function CalendarContent() {
   const supabase = await createClient();
   const { data: assets, error } = await supabase
     .from("assets")
-    .select("id, website_id, asset_type, service_name, hostname, expiry_date, renewal_url, renewal_responsibility, renewal_status, website:websites(name, client:clients(name))")
+    .select("id, website_id, asset_type, service_name, hostname, expiry_date, renewal_url, renewal_responsibility, renewal_status, website:websites!inner(active, name, client:clients!inner(active, name))")
     .eq("organization_id", context.organizationId)
     .eq("active", true)
+    .eq("website.active", true)
+    .eq("website.client.active", true)
     .not("expiry_date", "is", "null")
     .gte("expiry_date", historyStart.toISOString().slice(0, 10))
     .order("expiry_date", { ascending: true })

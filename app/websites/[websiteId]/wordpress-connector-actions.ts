@@ -9,9 +9,9 @@ async function authorize(websiteId: string) {
   const context = await getAuthContext();
   if (!context?.organizationId || !can(context.role, "manage_websites")) return null;
   const admin = createAdminClient();
-  const { data } = await admin.from("websites").select("id, organization_id")
+  const { data } = await admin.from("websites").select("id, organization_id, client:clients!inner(active)")
     .eq("id", websiteId).eq("organization_id", context.organizationId)
-    .eq("active", true).eq("platform", "wordpress").maybeSingle();
+    .eq("active", true).eq("client.active", true).eq("platform", "wordpress").maybeSingle();
   return data ? { context, admin, website: data } : null;
 }
 

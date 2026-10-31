@@ -473,8 +473,10 @@ export async function runUptimeBatch(options: {
     const staleBefore = new Date(now.getTime() - 60_000).toISOString();
     const { data, error } = await admin
       .from("monitoring_endpoints")
-      .select("id, organization_id, website_id, endpoint_url, expected_status_codes, check_interval_seconds, timeout_seconds, follow_redirects, max_redirects, consecutive_failure_threshold, consecutive_failures, last_checked_at")
+      .select("id, organization_id, website_id, endpoint_url, expected_status_codes, check_interval_seconds, timeout_seconds, follow_redirects, max_redirects, consecutive_failure_threshold, consecutive_failures, last_checked_at, website:websites!inner(active, client:clients!inner(active))")
       .eq("enabled", true)
+      .eq("website.active", true)
+      .eq("website.client.active", true)
       .or(`last_checked_at.is.null,last_checked_at.lte.${staleBefore}`)
       .order("last_checked_at", { ascending: true, nullsFirst: true })
       .limit(BATCH_SIZE);
@@ -569,8 +571,10 @@ export async function runSslBatch(options: {
     const endpointSslStaleBefore = new Date(now.getTime() - intervalMs).toISOString();
     const { data, error } = await admin
       .from("assets")
-      .select("id, organization_id, website_id, hostname, service_name, expiry_date, manual_override, last_checked_at")
+      .select("id, organization_id, website_id, hostname, service_name, expiry_date, manual_override, last_checked_at, website:websites!inner(active, client:clients!inner(active))")
       .eq("active", true)
+      .eq("website.active", true)
+      .eq("website.client.active", true)
       .eq("asset_type", "ssl_certificate")
       .not("hostname", "is", null)
       .or(`last_checked_at.is.null,last_checked_at.lte.${staleBefore}`)
@@ -584,8 +588,10 @@ export async function runSslBatch(options: {
       checkCertificateAsset(admin, asset, now),
     );
     const { data: endpointData, error: endpointError } = await admin.from("monitoring_endpoints")
-      .select("id, organization_id, website_id, endpoint_url")
+      .select("id, organization_id, website_id, endpoint_url, website:websites!inner(active, client:clients!inner(active))")
       .eq("enabled", true)
+      .eq("website.active", true)
+      .eq("website.client.active", true)
       .limit(BATCH_SIZE);
     if (endpointError) throw endpointError;
     const httpsEndpoints = ((endpointData ?? []) as HttpsEndpoint[]).filter((endpoint) => {
@@ -829,8 +835,9 @@ export async function runPerformanceBatch(options: {
     ) * 1000;
     const staleBefore = new Date(now.getTime() - intervalMs).toISOString();
     const { data, error } = await admin.from("websites")
-      .select("id, organization_id, primary_url, performance_checked_at")
+      .select("id, organization_id, primary_url, performance_checked_at, client:clients!inner(active)")
       .eq("active", true)
+      .eq("client.active", true)
       .or(`performance_checked_at.is.null,performance_checked_at.lte.${staleBefore}`)
       .order("performance_checked_at", { ascending: true, nullsFirst: true })
       .limit(PERFORMANCE_BATCH_SIZE);

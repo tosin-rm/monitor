@@ -7,26 +7,28 @@ import { createWebsite } from "@/app/websites/actions";
 import { WebsiteFields } from "@/app/_components/record-fields";
 import { can } from "@/lib/auth/roles";
 import { getRequestAuthContext } from "@/lib/auth/session";
+import { effectiveWebsiteStatus, lifecycleLabel, parseLifecycleFilter, type LifecycleStatus } from "@/lib/lifecycle/status";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Websites" };
 
-export default function WebsitesPage(props: { searchParams: Promise<{ q?: string; client?: string; error?: string; success?: string }> }) {
+export default function WebsitesPage(props: { searchParams: Promise<{ q?: string; client?: string; status?: string; error?: string; success?: string }> }) {
   return <Suspense fallback={<WebsitesLoading />}><WebsitesContent searchParams={props.searchParams} /></Suspense>;
 }
 
-async function WebsitesContent({ searchParams }: { searchParams: Promise<{ q?: string; client?: string; error?: string; success?: string }> }) {
+async function WebsitesContent({ searchParams }: { searchParams: Promise<{ q?: string; client?: string; status?: string; error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   const params = await searchParams;
   const search = (params.q ?? "").trim().slice(0, 100);
   const clientFilter = params.client ?? "";
+  const statusFilter = parseLifecycleFilter(params.status);
   const supabase = await createClient();
   const [clientsResult, websitesResult] = await Promise.all([
     supabase.from("clients").select("id, name").eq("organization_id", context.organizationId).eq("active", true).order("name"),
     (async () => {
-      let query = supabase.from("websites").select("id, name, primary_url, environment, platform, client_id, client:clients(name)").eq("organization_id", context.organizationId).eq("active", true).order("name");
+      let query = supabase.from("websites").select("id, name, primary_url, environment, platform, client_id, lifecycle_status, client:clients(name, lifecycle_status)").eq("organization_id", context.organizationId).order("name");
       if (search) query = query.ilike("name", `%${search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
       if (clientFilter) query = query.eq("client_id", clientFilter);
       return query;
@@ -36,6 +38,22 @@ async function WebsitesContent({ searchParams }: { searchParams: Promise<{ q?: s
     console.error("Website listing query failed", [clientsResult.error?.code, websitesResult.error?.code].filter(Boolean));
     throw new Error("Website inventory could not be loaded.");
   }
+  const allWebsites = websitesResult.data ?? [];
+  const visibleWebsites = allWebsites.filter((website) => {
+    const client = Array.isArray(website.client) ? website.client[0] : website.client;
+    const status = effectiveWebsiteStatus(
+      website.lifecycle_status as LifecycleStatus,
+      (client?.lifecycle_status ?? "active") as LifecycleStatus,
+    );
+    return statusFilter === "all" || status === statusFilter;
+  });
+  const activeWebsiteCount = allWebsites.filter((website) => {
+    const client = Array.isArray(website.client) ? website.client[0] : website.client;
+    return effectiveWebsiteStatus(
+      website.lifecycle_status as LifecycleStatus,
+      (client?.lifecycle_status ?? "active") as LifecycleStatus,
+    ) === "active";
+  }).length;
 
   return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Overview</Link>
@@ -43,15 +61,16 @@ async function WebsitesContent({ searchParams }: { searchParams: Promise<{ q?: s
       <form action="/websites" className="flex flex-wrap gap-2">
         <label htmlFor="website-search" className="sr-only">Search websites</label><span className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input id="website-search" name="q" defaultValue={search} placeholder="Search websites" className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-red-500 sm:w-48" /></span>
         <label htmlFor="website-client" className="sr-only">Filter by client</label><select id="website-client" name="client" defaultValue={clientFilter} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600"><option value="">All clients</option>{clientsResult.data?.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+        <label htmlFor="website-status" className="sr-only">Filter websites by status</label><select id="website-status" name="status" defaultValue={statusFilter} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600"><option value="active">Active</option><option value="on_hold">On hold</option><option value="transferred">Transferred</option><option value="archived">Archived</option><option value="all">All statuses</option></select>
         <button type="submit" className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">Filter</button>
       </form>
     </div>
     {params.error && <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{params.error === "invalid" ? "Check the website details and URL. Only public HTTP/HTTPS URLs on ports 80 and 443 are accepted." : "Website changes could not be saved."}</p>}
-    {params.success === "archived" && <p role="status" className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">Website archived; related monitoring was disabled and history retained.</p>}
+    {params.success === "lifecycle" && <p role="status" className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">Website status updated; history was retained.</p>}
     <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_320px]">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="text-sm font-bold text-slate-900">Website inventory</h2><p className="mt-0.5 text-[11px] text-slate-400">{websitesResult.data?.length ?? 0} active websites</p></div><Globe2 size={16} className="text-slate-400" /></div>
-        {websitesResult.data?.length ? <div className="divide-y divide-slate-100">{websitesResult.data.map((website) => { const client = Array.isArray(website.client) ? website.client[0] : website.client; return <Link key={website.id} href={`/websites/${website.id}`} className="flex items-center gap-3 px-5 py-4 hover:bg-slate-50"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700"><Globe2 size={16} /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{website.name}</span><span className="mt-1 block truncate text-[11px] text-red-700">{website.primary_url}</span></span><span className="text-right"><span className="block text-[11px] text-slate-600">{client?.name ?? "Client"}</span><span className="mt-1 block text-[10px] capitalize text-slate-400">{website.platform === "nextjs" ? "Next.js" : website.platform === "wordpress" ? "WordPress" : website.platform === "other" ? "Other" : "Platform not set"} · {website.environment}</span></span></Link>; })}</div> : <div className="px-6 py-14 text-center"><Globe2 size={22} className="mx-auto text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">{search || clientFilter ? "No matching websites" : "No websites yet"}</p><p className="mt-1 text-xs text-slate-400">Add an active website to begin monitoring its infrastructure.</p></div>}
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="text-sm font-bold text-slate-900">Website inventory</h2><p className="mt-0.5 text-[11px] text-slate-400">{activeWebsiteCount} active · {allWebsites.length} total</p></div><Globe2 size={16} className="text-slate-400" /></div>
+        {visibleWebsites.length ? <div className="divide-y divide-slate-100">{visibleWebsites.map((website) => { const client = Array.isArray(website.client) ? website.client[0] : website.client; const status = effectiveWebsiteStatus(website.lifecycle_status as LifecycleStatus, (client?.lifecycle_status ?? "active") as LifecycleStatus); return <Link key={website.id} href={`/websites/${website.id}`} className="flex items-center gap-3 px-5 py-4 hover:bg-slate-50"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700"><Globe2 size={16} /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{website.name}</span><span className="mt-1 block truncate text-[11px] text-red-700">{website.primary_url}</span></span><span className="text-right"><span className="block text-[11px] text-slate-600">{client?.name ?? "Client"}</span><span className="mt-1 block text-[10px] text-slate-400">{website.platform === "nextjs" ? "Next.js" : website.platform === "wordpress" ? "WordPress" : website.platform === "other" ? "Other" : "Platform not set"} · {website.environment}</span></span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{lifecycleLabel(status)}</span></Link>; })}</div> : <div className="px-6 py-14 text-center"><Globe2 size={22} className="mx-auto text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">{search || clientFilter ? "No matching websites" : "No websites in this status"}</p><p className="mt-1 text-xs text-slate-400">Change the status filter or add an active website.</p></div>}
       </section>
       {can(context.role, "manage_websites") && <section className="h-fit rounded-xl border border-slate-200 bg-white p-5"><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-red-700"><Plus size={15} /></span><h2 className="text-sm font-bold text-slate-900">Add website</h2></div>
         {clientsResult.data?.length ? <form action={createWebsite} className="mt-4 space-y-3"><WebsiteFields clients={clientsResult.data} selectedClient={clientFilter} /><button type="submit" className="h-10 w-full rounded-lg bg-red-600 px-4 text-xs font-semibold text-white hover:bg-red-700">Create website</button></form> : <div className="mt-4 rounded-lg bg-slate-50 p-3"><p className="text-xs leading-5 text-slate-500">Create a client record before adding its website.</p><Link href="/clients" className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700">Add a client</Link></div>}

@@ -54,7 +54,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   const end = zonedDateToUtc(monthNumber === 12 ? year + 1 : year, monthNumber === 12 ? 0 : monthNumber, 1, context.timeZone);
   const supabase = await createClient();
   const [websiteResult, endpointResult, assetResult, incidentResult] = await Promise.all([
-    supabase.from("websites").select("id, name, primary_url, platform, client:clients(name)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle(),
+    supabase.from("websites").select("id, name, primary_url, platform, client:clients!inner(name, active)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).eq("client.active", true).maybeSingle(),
     supabase.from("monitoring_endpoints").select("id, endpoint_url").eq("website_id", websiteId).eq("organization_id", context.organizationId),
     supabase.from("assets").select("id, asset_type, service_name, hostname, expiry_date").eq("website_id", websiteId).eq("organization_id", context.organizationId),
     supabase.from("incidents").select("incident_type, severity, status, started_at, resolved_at, occurrence_count, summary")

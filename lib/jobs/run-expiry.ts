@@ -33,8 +33,10 @@ export async function runExpiryEvaluation(
     for (let offset = 0; ; offset += ASSET_BATCH_SIZE) {
       const { data, error } = await supabase
         .from("assets")
-        .select("id, organization_id, website_id, asset_type, service_name, hostname, expiry_date, renewal_status, active")
+        .select("id, organization_id, website_id, asset_type, service_name, hostname, expiry_date, renewal_status, active, website:websites!inner(active, client:clients!inner(active))")
         .eq("active", true)
+        .eq("website.active", true)
+        .eq("website.client.active", true)
         .order("id")
         .range(offset, offset + ASSET_BATCH_SIZE - 1);
       if (error) throw error;

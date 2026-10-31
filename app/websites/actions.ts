@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { can } from "@/lib/auth/roles";
 import { getAuthContext } from "@/lib/auth/session";
+import { LIFECYCLE_STATUSES } from "@/lib/lifecycle/status";
 import { normalizeDomain, normalizeHttpUrl } from "@/lib/urls";
 import { parsePublicHttpUrl } from "@/lib/ssrf/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -71,6 +72,13 @@ export async function createWebsite(formData: FormData): Promise<void> {
   const input = normalizeWebsiteForm(formData);
   if (!input) redirect("/websites?error=invalid");
   const supabase = await createClient();
+  const { data: client, error: clientError } = await supabase.from("clients").select("id")
+    .eq("id", input.clientId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle();
+  if (clientError) {
+    console.error("Website client validation failed", { code: clientError.code });
+    redirect("/websites?error=save");
+  }
+  if (!client) redirect("/websites?error=invalid");
   const { data, error } = await supabase.from("websites").insert({
     organization_id: context.organizationId,
     client_id: input.clientId,
@@ -106,19 +114,25 @@ export async function updateWebsite(formData: FormData): Promise<void> {
   redirect(`/websites/${websiteId}?success=saved`);
 }
 
-export async function archiveWebsite(formData: FormData): Promise<void> {
+export async function updateWebsiteLifecycle(formData: FormData): Promise<void> {
   const context = await requireManager("manage_websites");
   const websiteId = String(formData.get("websiteId") ?? "");
-  if (!websiteId) redirect("/websites?error=invalid");
+  const status = String(formData.get("status") ?? "");
+  if (!z.string().uuid().safeParse(websiteId).success || !LIFECYCLE_STATUSES.includes(status as (typeof LIFECYCLE_STATUSES)[number])) {
+    redirect("/websites?error=invalid");
+  }
   const supabase = await createClient();
-  const { data, error } = await supabase.from("websites").update({ active: false })
-    .eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true)
+  const { data, error } = await supabase.from("websites").update({
+    lifecycle_status: status,
+    active: status === "active",
+  })
+    .eq("id", websiteId).eq("organization_id", context.organizationId)
     .select("id").maybeSingle();
   if (error || !data) {
-    console.error("Website archive failed", { code: error?.code ?? "not_found" });
-    redirect(`/websites/${websiteId}?error=archive`);
+    console.error("Website lifecycle update failed", { code: error?.code ?? "not_found" });
+    redirect(`/websites/${websiteId}?error=lifecycle`);
   }
-  redirect("/websites?success=archived");
+  redirect(`/websites/${websiteId}?success=lifecycle`);
 }
 
 function readAssetForm(formData: FormData, existing?: {

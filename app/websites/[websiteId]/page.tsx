@@ -5,12 +5,14 @@ import { Suspense } from "react";
 import { Activity, ArrowLeft, CalendarClock, ChevronDown, ExternalLink, Globe2, LockKeyhole, Plus, ShieldCheck, Zap } from "lucide-react";
 import { DismissibleNotice } from "@/app/_components/dismissible-notice";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
+import { LifecycleStatusForm } from "@/app/_components/lifecycle-status-form";
 import { WordPressSecurityPanel } from "@/app/websites/[websiteId]/wordpress-security-panel";
 import { AssetFields, WebsiteFields } from "@/app/_components/record-fields";
-import { archiveAsset, archiveWebsite, confirmRenewal, createAsset, createMonitoringEndpoint, removeMonitoringEndpoint, setMonitoringEndpoint, updateWebsite } from "@/app/websites/actions";
+import { archiveAsset, confirmRenewal, createAsset, createMonitoringEndpoint, removeMonitoringEndpoint, setMonitoringEndpoint, updateWebsite, updateWebsiteLifecycle } from "@/app/websites/actions";
 import { can } from "@/lib/auth/roles";
 import { calendarDaysRemaining } from "@/lib/expiry/calendar-days";
 import { getRequestAuthContext } from "@/lib/auth/session";
+import { effectiveWebsiteStatus, lifecycleLabel, type LifecycleStatus } from "@/lib/lifecycle/status";
 import { isConnectorReportStale } from "@/lib/wordpress-connector/status";
 import { getCentralVulnerabilityAssessment } from "@/lib/wordpress-connector/vulnerability-assessment";
 import { createClient } from "@/lib/supabase/server";
@@ -28,8 +30,8 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   const [{ websiteId }, paramsResult] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
   const [websiteResult, clientsResult, assetsResult, endpointsResult, incidentsResult, performanceResult, connectorResult] = await Promise.all([
-    supabase.from("websites").select("id, client_id, name, primary_url, environment, platform, active, client:clients(name)").eq("id", websiteId).eq("organization_id", context.organizationId).eq("active", true).maybeSingle(),
-    can(context.role, "manage_websites") ? supabase.from("clients").select("id, name").eq("organization_id", context.organizationId).eq("active", true).order("name") : Promise.resolve({ data: [], error: null }),
+    supabase.from("websites").select("id, client_id, name, primary_url, environment, platform, lifecycle_status, client:clients(name, lifecycle_status)").eq("id", websiteId).eq("organization_id", context.organizationId).maybeSingle(),
+    can(context.role, "manage_websites") ? supabase.from("clients").select("id, name, lifecycle_status").eq("organization_id", context.organizationId).order("name") : Promise.resolve({ data: [], error: null }),
     supabase.from("assets").select("id, asset_type, provider_name, provider_account_reference, service_name, hostname, expiry_date, renewal_url, renewal_responsibility, renewal_status, date_source, last_verified_at, last_checked_at, last_check_error, date_confidence").eq("website_id", websiteId).eq("organization_id", context.organizationId).eq("active", true).order("expiry_date", { ascending: true, nullsFirst: false }),
     supabase.from("monitoring_endpoints").select("id, endpoint_url, enabled, check_interval_seconds, timeout_seconds, last_checked_at, last_success_at, last_failure_at, consecutive_failures, consecutive_failure_threshold").eq("website_id", websiteId).eq("organization_id", context.organizationId).order("created_at"),
     supabase.from("incidents").select("id, incident_type, severity, status, started_at, last_observed_at, summary").eq("website_id", websiteId).eq("organization_id", context.organizationId).in("status", ["open", "acknowledged", "investigating"]).order("started_at", { ascending: false }).limit(10),
@@ -55,6 +57,11 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
     ? await getCentralVulnerabilityAssessment(latestWordPressInventory.plugins ?? [])
     : null;
   const client = Array.isArray(website.client) ? website.client[0] : website.client;
+  const lifecycleStatus = effectiveWebsiteStatus(
+    website.lifecycle_status as LifecycleStatus,
+    (client?.lifecycle_status ?? "active") as LifecycleStatus,
+  );
+  const monitoringPaused = lifecycleStatus !== "active";
   const endpoints = endpointsResult.data ?? [];
   const endpointIds = endpoints.map((endpoint) => endpoint.id);
   const performanceChecks = performanceResult.data ?? [];
@@ -133,12 +140,13 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
     return endpoint.consecutive_failures >= endpoint.consecutive_failure_threshold
       || Boolean(latest && !latest.success && !uncertainTransportErrors.includes(latest.error_code ?? ""));
   }) || latestCertificateChecks.some((check) => !check.success);
-  const healthLabel = healthWarning ? "Needs attention" : endpoints.some((endpoint) => endpoint.enabled) || certificateTargetCount ? "Monitoring active" : "No checks configured";
+  const healthLabel = monitoringPaused ? "Monitoring paused" : healthWarning ? "Needs attention" : endpoints.some((endpoint) => endpoint.enabled) || certificateTargetCount ? "Monitoring active" : "No checks configured";
   return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/websites" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Websites</Link>
-    <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-slate-400">{client?.name ?? "Client"} · <span className="capitalize">{website.environment}</span></p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{website.name}</h1><a href={website.primary_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-red-700 hover:underline">{website.primary_url}<ExternalLink size={12} /></a></div><div className="flex flex-wrap items-center gap-2"><Link href={`/websites/${website.id}/report`} className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">Monthly report</Link><span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active website</span></div></div>
+    <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-slate-400">{client?.name ?? "Client"} · <span className="capitalize">{website.environment}</span></p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{website.name}</h1><a href={website.primary_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-red-700 hover:underline">{website.primary_url}<ExternalLink size={12} /></a></div><div className="flex flex-wrap items-center gap-2"><Link href={`/websites/${website.id}/report`} className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">Monthly report</Link><span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${lifecycleStatus === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}><span className={`h-1.5 w-1.5 rounded-full ${lifecycleStatus === "active" ? "bg-emerald-500" : "bg-slate-400"}`} /> {lifecycleLabel(lifecycleStatus)} website</span></div></div>
+    {monitoringPaused && <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Monitoring and expiry reminders are paused. Existing history is retained and checks resume when the website and its client are Active.</p>}
     {paramsResult.error && <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{websiteError(paramsResult.error)}</p>}
-    {paramsResult.success && <DismissibleNotice className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">{paramsResult.success === "renewed" ? "Renewal recorded and reminder schedule updated." : paramsResult.success === "endpoint_removed" ? "Endpoint and its check history removed." : paramsResult.success === "endpoint" ? "Uptime endpoint added." : "Website information saved."}</DismissibleNotice>}
+    {paramsResult.success && <DismissibleNotice className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">{paramsResult.success === "lifecycle" ? "Website status updated; history was retained." : paramsResult.success === "renewed" ? "Renewal recorded and reminder schedule updated." : paramsResult.success === "endpoint_removed" ? "Endpoint and its check history removed." : paramsResult.success === "endpoint" ? "Uptime endpoint added." : "Website information saved."}</DismissibleNotice>}
 
     {website.platform === "wordpress" && <WordPressSecurityPanel websiteId={website.id} websiteUrl={website.primary_url} canManage={can(context.role, "manage_websites")} stale={isConnectorReportStale(connectorResult.data?.last_report_at ?? null)} evaluatedAt={new Date().toISOString()} connection={connectorResult.data} vulnerability={centralVulnerability} latest={wordpressLatestResult.data as { collected_at: string; wordpress_version: string; plugins: Array<{ slug: string; name: string; version: string; active: boolean; update_status: "available" | "unavailable" | "unknown"; update_version?: string | null }>; spam_comment_count: number; security_report: import("@/lib/wordpress-connector/security-types").ConnectorSecurityReport | import("@/lib/wordpress-connector/security-types").ProposedConnectorSecurityReport | Record<string, never> } | null} />}
 
@@ -201,7 +209,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
       </div>
 
       <div className="space-y-5">
-        {can(context.role, "manage_websites") && <section className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-bold text-slate-900">Website settings</h2><form action={updateWebsite} className="mt-4 space-y-3"><input type="hidden" name="websiteId" value={website.id} /><WebsiteFields clients={clientsResult.data ?? []} website={{ name: website.name, primary_url: website.primary_url, environment: website.environment, platform: website.platform, client_id: website.client_id }} /><button type="submit" className="h-9 w-full rounded-lg bg-red-600 px-4 text-xs font-semibold text-white hover:bg-red-700">Save website</button></form><form action={archiveWebsite} className="mt-4 border-t border-slate-100 pt-4"><input type="hidden" name="websiteId" value={website.id} /><ConfirmSubmit type="submit" confirmation={`Archive ${website.name}? Its assets and endpoints will be disabled without deleting their history.`} className="h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Archive website</ConfirmSubmit></form></section>}
+        {can(context.role, "manage_websites") && <section className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-sm font-bold text-slate-900">Website settings</h2><form action={updateWebsite} className="mt-4 space-y-3"><input type="hidden" name="websiteId" value={website.id} /><WebsiteFields clients={clientsResult.data ?? []} website={{ name: website.name, primary_url: website.primary_url, environment: website.environment, platform: website.platform, client_id: website.client_id }} /><button type="submit" className="h-9 w-full rounded-lg bg-red-600 px-4 text-xs font-semibold text-white hover:bg-red-700">Save website</button></form><LifecycleStatusForm action={updateWebsiteLifecycle} entityField="websiteId" entityId={website.id} status={website.lifecycle_status as LifecycleStatus} /></section>}
 
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="border-b border-slate-100 px-5 py-4"><h2 className="text-sm font-bold text-slate-900">Open incidents</h2></div>
           {incidentsResult.data?.length ? <div className="divide-y divide-slate-100">{incidentsResult.data.map((incident) => <div key={incident.id} className="px-5 py-3.5"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-slate-800">{incident.summary}</p><span className="text-[10px] capitalize text-amber-700">{incident.severity}</span></div><p className="mt-1 text-[10px] capitalize text-slate-400">{incident.incident_type.replaceAll("_", " ")} · {incident.status} · started {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(incident.started_at))}</p></div>)}</div> : <p className="px-5 py-7 text-xs text-slate-400">No open incidents.</p>}
@@ -220,10 +228,11 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
 }
 
 function websiteError(error: string): string {
+  if (error === "invalid") return "Check the website details and choose an active client when creating a website.";
   if (error === "asset") return "The service asset was not saved. Check the type, hostname, expiry date, and renewal URL.";
   if (error === "endpoint") return "The endpoint was not saved. Use a public HTTP(S) URL on port 80 or 443 and valid check settings.";
   if (error === "endpoint_remove") return "The endpoint could not be removed.";
-  if (error === "archive") return "The website could not be archived.";
+  if (error === "lifecycle") return "The website status could not be updated.";
   return "Website or renewal changes could not be saved.";
 }
 

@@ -50,9 +50,11 @@ async function InventoryContent({ searchParams }: { searchParams: Promise<Query>
 
   let assetsQuery = supabase
     .from("assets")
-    .select("id, website_id, asset_type, provider_name, provider_account_reference, service_name, hostname, expiry_date, renewal_url, renewal_responsibility, renewal_status, date_source, date_confidence, last_verified_at, last_checked_at, last_check_error, website:websites!inner(id, name, client_id, client:clients(name))")
+    .select("id, website_id, asset_type, provider_name, provider_account_reference, service_name, hostname, expiry_date, renewal_url, renewal_responsibility, renewal_status, date_source, date_confidence, last_verified_at, last_checked_at, last_check_error, website:websites!inner(id, name, client_id, active, client:clients!inner(name, active))")
     .eq("organization_id", context.organizationId)
     .eq("active", true)
+    .eq("website.active", true)
+    .eq("website.client.active", true)
     .order("expiry_date", { ascending: true, nullsFirst: false })
     .limit(500);
   if (filters.type && ["domain", "hosting", "ssl_certificate", "other"].includes(filters.type)) {

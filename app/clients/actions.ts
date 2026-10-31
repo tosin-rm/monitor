@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { can } from "@/lib/auth/roles";
 import { getAuthContext } from "@/lib/auth/session";
+import { LIFECYCLE_STATUSES } from "@/lib/lifecycle/status";
 import { createClient } from "@/lib/supabase/server";
 
 const optionalText = (max: number) =>
@@ -84,26 +85,28 @@ export async function updateClientRecord(formData: FormData): Promise<void> {
   redirect(`/clients/${clientId}?success=saved`);
 }
 
-export async function archiveClient(formData: FormData): Promise<void> {
+export async function updateClientLifecycle(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
   if (!can(context.role, "manage_clients")) redirect("/clients?error=forbidden");
   const clientId = String(formData.get("clientId") ?? "");
-  if (!clientId) redirect("/clients?error=invalid");
+  const status = String(formData.get("status") ?? "");
+  if (!z.string().uuid().safeParse(clientId).success || !LIFECYCLE_STATUSES.includes(status as (typeof LIFECYCLE_STATUSES)[number])) {
+    redirect("/clients?error=invalid");
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("clients")
-    .update({ active: false })
+    .update({ lifecycle_status: status, active: status === "active" })
     .eq("id", clientId)
     .eq("organization_id", context.organizationId)
-    .eq("active", true)
     .select("id")
     .maybeSingle();
   if (error || !data) {
-    console.error("Client archive failed", { code: error?.code ?? "not_found" });
-    redirect(`/clients/${clientId}?error=archive`);
+    console.error("Client lifecycle update failed", { code: error?.code ?? "not_found" });
+    redirect(`/clients/${clientId}?error=lifecycle`);
   }
-  redirect("/clients?success=archived");
+  redirect(`/clients/${clientId}?success=lifecycle`);
 }

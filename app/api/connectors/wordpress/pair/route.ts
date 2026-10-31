@@ -23,13 +23,14 @@ export async function POST(request: Request) {
   if (!pair || pair.consumed_at || new Date(pair.expires_at).getTime() <= Date.now()) {
     return NextResponse.json({ error: "invalid_or_expired_pairing_code" }, { status: 401 });
   }
-  const { data: website, error: websiteError } = await admin.from("websites").select("id, organization_id, platform, active")
+  const { data: website, error: websiteError } = await admin.from("websites").select("id, organization_id, platform, active, client:clients!inner(active)")
     .eq("id", pair.website_id).eq("organization_id", pair.organization_id).maybeSingle();
   if (websiteError) {
     console.error("WordPress connector paired website lookup failed", { code: websiteError.code });
     return NextResponse.json({ error: "pairing_unavailable" }, { status: 503 });
   }
-  if (!website?.active || website.platform !== "wordpress") return NextResponse.json({ error: "website_unavailable" }, { status: 409 });
+  const client = Array.isArray(website?.client) ? website.client[0] : website?.client;
+  if (!website?.active || !client?.active || website.platform !== "wordpress") return NextResponse.json({ error: "website_unavailable" }, { status: 409 });
   const consumedAt = new Date().toISOString();
   const consumed = await admin.from("wordpress_connector_pairing_codes").update({ consumed_at: consumedAt })
     .eq("id", pair.id).is("consumed_at", null).gt("expires_at", consumedAt).select("id").maybeSingle();

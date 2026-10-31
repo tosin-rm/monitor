@@ -69,9 +69,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "connection_unavailable" }, { status: 503 });
   }
   if (!validHmac(secret, timestamp, requestId, rawBody, signature)) return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
-  const { data: website } = await admin.from("websites").select("id")
+  const { data: website } = await admin.from("websites").select("id, client:clients!inner(active)")
     .eq("id", connector.website_id).eq("organization_id", connector.organization_id)
-    .eq("active", true).eq("platform", "wordpress").maybeSingle();
+    .eq("active", true).eq("client.active", true).eq("platform", "wordpress").maybeSingle();
   if (!website) return NextResponse.json({ error: "website_unavailable" }, { status: 409 });
 
   const nonceCutoff = new Date(Date.now() - 10 * 60_000).toISOString();
