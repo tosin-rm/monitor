@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { can, parseRole } from "@/lib/auth/roles";
 import { appBaseUrl } from "@/lib/env";
+import { classifyTeamInviteError } from "@/lib/auth/team-invite-error";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext } from "@/lib/auth/session";
 
@@ -29,8 +30,13 @@ export async function inviteMember(formData: FormData): Promise<void> {
     { redirectTo: inviteRedirect.toString() },
   );
   if (inviteError || !invitation.user) {
-    console.error("Team invitation failed", { code: inviteError?.code ?? "missing_user" });
-    redirect("/team?error=invite");
+    const category = classifyTeamInviteError(inviteError);
+    console.error("Team invitation failed", {
+      code: inviteError?.code ?? "missing_user",
+      status: inviteError?.status,
+      category,
+    });
+    redirect(`/team?error=${category === "existing-account" ? "invite-existing" : "invite"}`);
   }
 
   const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();

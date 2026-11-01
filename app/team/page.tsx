@@ -190,6 +190,7 @@ async function TeamContent({
 function teamErrorMessage(error: string): string {
   if (error === "invalid") return "Check the email address and selected role.";
   if (error === "forbidden") return "Your role does not allow team administration.";
+  if (error === "invite-existing") return "This email already has a Monitor account. No invitation email was sent and no workspace access was changed. The invitation form currently supports new accounts only.";
   if (error === "invite") return "Invitation email could not be sent. Check Supabase Auth email configuration and the address.";
   if (error === "record_invite") return "The email was invited, but workspace access could not be recorded. Please contact an owner.";
   return "The requested team update could not be completed. Confirm that at least one owner remains.";
