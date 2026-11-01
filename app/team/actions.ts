@@ -36,7 +36,12 @@ export async function inviteMember(formData: FormData): Promise<void> {
       status: inviteError?.status,
       category,
     });
-    redirect(`/team?error=${category === "existing-account" ? "invite-existing" : "invite"}`);
+    const error = category === "existing-account"
+      ? "invite-existing"
+      : category === "rate-limit"
+        ? "invite-rate-limit"
+        : "invite";
+    redirect(`/team?error=${error}`);
   }
 
   const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();

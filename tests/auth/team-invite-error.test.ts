@@ -7,8 +7,14 @@ describe("team invitation error classification", () => {
     expect(classifyTeamInviteError({ code: "user_already_exists" })).toBe("existing-account");
   });
 
+  it("identifies email delivery rate limits", () => {
+    expect(classifyTeamInviteError({ code: "over_email_send_rate_limit" })).toBe("rate-limit");
+    expect(classifyTeamInviteError({ message: "Email rate limit exceeded" })).toBe("rate-limit");
+    expect(classifyTeamInviteError({ status: 429 })).toBe("rate-limit");
+  });
+
   it("keeps other send errors in the generic category", () => {
-    expect(classifyTeamInviteError({ code: "over_email_send_rate_limit", status: 429 })).toBe("send-failed");
+    expect(classifyTeamInviteError({ code: "smtp_error", status: 500 })).toBe("send-failed");
     expect(classifyTeamInviteError(null)).toBe("send-failed");
   });
 });
