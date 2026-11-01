@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Activity, ArrowRight } from "lucide-react";
 import { signIn } from "@/app/auth/actions";
 import { PasswordInput } from "@/app/_components/password-input";
+import { InvitationFragmentHandler } from "@/app/login/invitation-fragment-handler";
 import { getRequestAuthContext } from "@/lib/auth/session";
 import { canUseDevPreview } from "@/lib/auth/dev-preview";
 
@@ -40,6 +41,7 @@ async function LoginContent({
           <p className="mt-1.5 text-sm text-slate-500">Private access for your client operations team.</p>
         </div>
         <form action={signIn} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          {error?.startsWith("invite-") && <InvitationFragmentHandler />}
           {error && (
             <p role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-xs leading-5 text-red-700">
               {error === "credentials"
@@ -49,7 +51,7 @@ async function LoginContent({
                   : error === "invite-expired"
                     ? "This invitation has expired or was already used. Ask the workspace administrator to send a new invitation, then open the newest email link."
                     : error === "invite-configuration"
-                      ? "The invitation email link could not be verified. Ask the workspace administrator to check the Supabase Invite user email template and allow this site's /auth/callback URL."
+                      ? "The invitation link did not include a usable verification token. Open the newest invite email; if this keeps happening, ask the workspace administrator to check Supabase's Invite user template and allowed callback URL."
                       : error === "invite-invalid"
                         ? "This invitation link could not be verified. Open the newest invitation email, or ask the workspace administrator to send a fresh invitation."
                   : error === "signup"
