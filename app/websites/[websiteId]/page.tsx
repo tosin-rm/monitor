@@ -15,6 +15,15 @@ import { getRequestAuthContext } from "@/lib/auth/session";
 import { effectiveWebsiteStatus, lifecycleLabel, type LifecycleStatus } from "@/lib/lifecycle/status";
 import { isConnectorReportStale } from "@/lib/wordpress-connector/status";
 import { getCentralVulnerabilityAssessment } from "@/lib/wordpress-connector/vulnerability-assessment";
+import {
+  buildMetricGuidance,
+  getLighthouseFindings,
+  lighthouseCategoryLabel,
+  lighthouseCategoryScore,
+  performanceScoreExplanation,
+  type LighthouseCategory,
+} from "@/lib/health/performance-guidance";
+import { certificateGuidance, isConfirmedCertificateProblem } from "@/lib/ssl/guidance";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Website details" };
@@ -66,7 +75,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   const endpointIds = endpoints.map((endpoint) => endpoint.id);
   const performanceChecks = performanceResult.data ?? [];
   const latestPerformance = performanceChecks[0];
-  const performanceMetrics = latestPerformance?.metadata as Record<string, string | number | null> | undefined;
+  const performanceMetrics = latestPerformance?.metadata as Record<string, unknown> | undefined;
   const since24h = getSince24Hours();
   const recentHttpChecks = endpointIds.length
     ? await supabase.from("check_results").select("success, response_time_ms, checked_at, error_code")
@@ -89,7 +98,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   const p95ResponseMs = responseTimes.length ? responseTimes[Math.min(responseTimes.length - 1, Math.ceil(responseTimes.length * 0.95) - 1)] : null;
   const certificateAssets = (assetsResult.data ?? []).filter((asset) => asset.asset_type === "ssl_certificate");
   const certificateChecks = certificateAssets.length
-    ? await supabase.from("check_results").select("id, checked_at, success, certificate_not_after, sanitized_error_message, metadata, asset_id")
+    ? await supabase.from("check_results").select("id, checked_at, success, error_code, certificate_not_after, sanitized_error_message, metadata, asset_id")
       .eq("organization_id", context.organizationId).in("asset_id", certificateAssets.map((asset) => asset.id))
       .eq("check_type", "ssl").order("checked_at", { ascending: false }).limit(20)
     : { data: [], error: null };
@@ -102,7 +111,7 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
     try { return new URL(endpoint.endpoint_url).protocol === "https:"; } catch { return false; }
   });
   const endpointCertificateChecks = httpsEndpoints.length
-    ? await supabase.from("check_results").select("id, checked_at, success, certificate_not_after, sanitized_error_message, metadata, endpoint_id")
+    ? await supabase.from("check_results").select("id, checked_at, success, error_code, certificate_not_after, sanitized_error_message, metadata, endpoint_id")
       .eq("organization_id", context.organizationId).in("endpoint_id", httpsEndpoints.map((endpoint) => endpoint.id))
       .eq("check_type", "ssl").order("checked_at", { ascending: false }).limit(100)
     : { data: [], error: null };
@@ -139,8 +148,34 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
     const latest = latestEndpointChecks.get(endpoint.id);
     return endpoint.consecutive_failures >= endpoint.consecutive_failure_threshold
       || Boolean(latest && !latest.success && !uncertainTransportErrors.includes(latest.error_code ?? ""));
-  }) || latestCertificateChecks.some((check) => !check.success);
+  }) || latestCertificateChecks.some((check) => isConfirmedCertificateProblem(check.error_code));
   const healthLabel = monitoringPaused ? "Monitoring paused" : healthWarning ? "Needs attention" : endpoints.some((endpoint) => endpoint.enabled) || certificateTargetCount ? "Monitoring active" : "No checks configured";
+  const failedCertificateChecks = latestCertificateChecks.filter((check) => !check.success);
+  const confirmedCertificateProblem = failedCertificateChecks.some((check) => isConfirmedCertificateProblem(check.error_code));
+  const certificateStatus = !certificateTargetCount
+    ? "Not monitored"
+    : latestCertificateChecks.length === 0
+      ? "Awaiting check"
+      : confirmedCertificateProblem
+        ? "Attention"
+        : failedCertificateChecks.length
+          ? "Check unconfirmed"
+          : latestCertificateChecks.length === certificateTargetCount
+            ? "Valid"
+            : "Partial data";
+  const metricGuidance = buildMetricGuidance(performanceMetrics);
+  const categories: LighthouseCategory[] = ["performance", "accessibility", "best-practices", "seo"];
+  const pageSpeedUrl = `https://pagespeed.web.dev/analysis?url=${encodeURIComponent(website.primary_url)}`;
+  const performanceTiles = [
+    { label: "LCP", value: metricDisplay(performanceMetrics?.lcp_ms, " ms") },
+    { label: "INP", value: metricDisplay(performanceMetrics?.inp_ms, " ms", "No field data") },
+    { label: "CLS", value: metricDisplay(performanceMetrics?.cls, "") },
+    { label: "FCP", value: metricDisplay(performanceMetrics?.fcp_ms, " ms") },
+    ...categories.map((category) => ({
+      label: lighthouseCategoryLabel(category),
+      value: metricDisplay(lighthouseCategoryScore(performanceMetrics, category), "/100"),
+    })),
+  ];
   return <main className="min-h-screen bg-white px-5 py-7 sm:px-8 sm:py-9"><div className="mx-auto max-w-6xl">
     <Link href="/websites" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900"><ArrowLeft size={14} /> Websites</Link>
     <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-medium text-slate-400">{client?.name ?? "Client"} · <span className="capitalize">{website.environment}</span></p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{website.name}</h1><a href={website.primary_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-red-700 hover:underline">{website.primary_url}<ExternalLink size={12} /></a></div><div className="flex flex-wrap items-center gap-2"><Link href={`/websites/${website.id}/report`} className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">Monthly report</Link><span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${lifecycleStatus === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}><span className={`h-1.5 w-1.5 rounded-full ${lifecycleStatus === "active" ? "bg-emerald-500" : "bg-slate-400"}`} /> {lifecycleLabel(lifecycleStatus)} website</span></div></div>
@@ -155,16 +190,45 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
       <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
         <HealthMetric label="Uptime · 24 hours" value={uptimePercent === null ? "No data" : `${uptimePercent.toFixed(2)}%`} detail={httpChecks.length ? `${httpChecks.length} checks` : endpoints.length ? "Awaiting checks" : "No endpoints configured"} tone={uptimePercent !== null && uptimePercent < 99 ? "warning" : "normal"} />
         <HealthMetric label="Average response" value={averageResponseMs === null ? "No data" : `${averageResponseMs} ms`} detail={p95ResponseMs === null ? "Last 24 hours" : `95th percentile ${p95ResponseMs} ms`} />
-        <HealthMetric label="SSL/TLS certificates" value={certificateTargetCount ? latestCertificateChecks.length === 0 ? "Awaiting check" : latestCertificateChecks.length === certificateTargetCount && latestCertificateChecks.every((check) => check.success) ? "Valid" : latestCertificateChecks.some((check) => !check.success) ? "Attention" : "Partial data" : "Not monitored"} detail={certificateTargetCount ? `${httpsEndpoints.length} HTTPS endpoint(s) · ${certificateAssets.length} certificate asset(s)` : "Add an HTTPS endpoint to monitor SSL/TLS"} tone={latestCertificateChecks.some((check) => !check.success) ? "warning" : "normal"} />
-        <HealthMetric label="Performance score" value={typeof performanceMetrics?.performance_score === "number" ? `${performanceMetrics.performance_score}/100` : latestPerformance ? "Scan failed" : "Awaiting scan"} detail={latestPerformance ? `${latestPerformance.error_code ? `${latestPerformance.error_code.replaceAll("_", " ")} · ` : ""}PageSpeed · ${formatCheckedAt(latestPerformance.checked_at, context.timeZone)}` : "Daily Lighthouse scan"} tone={latestPerformance?.success === false || typeof performanceMetrics?.performance_score === "number" && performanceMetrics.performance_score < 50 ? "warning" : "normal"} />
+        <HealthMetric label="SSL/TLS certificates" value={certificateStatus} detail={certificateTargetCount ? `${httpsEndpoints.length} HTTPS endpoint(s) · ${certificateAssets.length} certificate asset(s)` : "Add an HTTPS endpoint to monitor SSL/TLS"} tone={confirmedCertificateProblem ? "warning" : "normal"} />
+        <HealthMetric label="Performance score" value={typeof performanceMetrics?.performance_score === "number" ? `${performanceMetrics.performance_score}/100` : latestPerformance ? "Scan failed" : "Awaiting scan"} detail={latestPerformance ? `Weighted mobile Lighthouse score · ${formatCheckedAt(latestPerformance.checked_at, context.timeZone)}` : "Daily Lighthouse scan"} tone={latestPerformance?.success === false || typeof performanceMetrics?.performance_score === "number" && performanceMetrics.performance_score < 50 ? "warning" : "normal"} />
       </div>
       <div className="grid gap-5 border-t border-slate-100 p-5 lg:grid-cols-[1fr_1fr]">
         <div><h3 className="flex items-center gap-2 text-xs font-bold text-slate-800"><Zap size={14} className="text-amber-500" /> Performance · PageSpeed Insights</h3>
-          {latestPerformance?.success && performanceMetrics ? <><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{[["LCP", performanceMetrics.lcp_ms, " ms"], ["INP", performanceMetrics.inp_ms, " ms"], ["CLS", performanceMetrics.cls, ""], ["FCP", performanceMetrics.fcp_ms, " ms"], ["Accessibility", performanceMetrics.accessibility_score, "/100"], ["Best practices", performanceMetrics.best_practices_score, "/100"], ["SEO", performanceMetrics.seo_score, "/100"]].map(([label, value, suffix]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">{label}</p><p className="mt-1 text-xs font-semibold text-slate-700">{typeof value === "number" ? `${value}${suffix}` : label === "INP" ? "No field data" : "—"}</p></div>)}</div><p className="mt-3 text-[10px] text-slate-400">{Number(performanceMetrics.field_data_available) ? "Core Web Vitals use available real-user field data; other timing values are Lighthouse lab measurements." : "No CrUX field data was returned for this site. INP requires real-user field data; CLS uses Lighthouse when available."}</p></> : <p className="mt-3 rounded-lg bg-slate-50 px-3 py-4 text-[11px] text-slate-500">{latestPerformance?.sanitized_error_message ?? "A daily mobile Lighthouse scan will populate performance and Core Web Vitals here."}</p>}
+          {latestPerformance?.success && performanceMetrics ? <>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{performanceTiles.map(({ label, value }) => <div key={label} className="rounded-lg bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">{label}</p><p className="mt-1 text-xs font-semibold text-slate-700">{value}</p></div>)}</div>
+            <p className="mt-3 text-[10px] text-slate-400">{Number(performanceMetrics.field_data_available) ? "Core Web Vitals use available real-user field data; other timing values are Lighthouse lab measurements." : "No CrUX field data was returned for this site. INP requires real-user field data; CLS uses Lighthouse when available."}</p>
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+              <h4 className="text-[11px] font-bold text-slate-800">What to fix first</h4>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">{typeof performanceMetrics.performance_score === "number" ? performanceScoreExplanation(performanceMetrics.performance_score) : "These findings are from the latest mobile Lighthouse scan."}</p>
+              {categories.map((category) => {
+                const findings = getLighthouseFindings(performanceMetrics, category);
+                const score = lighthouseCategoryScore(performanceMetrics, category);
+                if (score !== null && score >= 90) return null;
+                if (!findings.length) {
+                  return score !== null ? <p key={category} className="mt-3 text-[10px] leading-4 text-slate-500"><strong>{lighthouseCategoryLabel(category)} · {score}/100:</strong> This scan has no saved failing-audit details for this category. Open the full PageSpeed report to see the individual checks.</p> : null;
+                }
+                return <div key={category} className="mt-3">
+                  <p className="text-[10px] font-semibold text-slate-700">{lighthouseCategoryLabel(category)}{score === null ? "" : ` · ${score}/100`}</p>
+                  <ul className="mt-1 space-y-2">{findings.map((finding) => <li key={finding.id} className="rounded-md bg-slate-50 p-2.5">
+                    <p className="text-[10px] font-semibold text-slate-700">{finding.title}{finding.displayValue ? ` · ${finding.displayValue}` : ""}{finding.estimatedSavingsMs ? ` · about ${finding.estimatedSavingsMs} ms potential savings` : ""}</p>
+                    <p className="mt-1 text-[10px] leading-4 text-slate-500">{finding.description}</p>
+                  </li>)}</ul>
+                </div>;
+              })}
+              {metricGuidance.length > 0 && <div className="mt-3">
+                <p className="text-[10px] font-semibold text-slate-700">Measured metrics outside target</p>
+                <ul className="mt-1 space-y-1.5">{metricGuidance.map((metric) => <li key={metric.label} className="text-[10px] leading-4 text-slate-600"><strong className="text-slate-700">{metric.label}: {metric.value}</strong> ({metric.assessment}; target {metric.target}) — {metric.action}</li>)}</ul>
+              </div>}
+              {!categories.some((category) => getLighthouseFindings(performanceMetrics, category).length) && metricGuidance.length === 0 && <p className="mt-2 text-[10px] leading-4 text-slate-500">This scan has no failed audits or measured metrics outside their target ranges. If the score is still low, open the full report for its audit breakdown.</p>}
+              <a href={pageSpeedUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 hover:underline">Open full PageSpeed report <ExternalLink size={10} /></a>
+            </div>
+          </> : <p className="mt-3 rounded-lg bg-slate-50 px-3 py-4 text-[11px] text-slate-500">{latestPerformance?.sanitized_error_message ?? "A daily mobile Lighthouse scan will populate performance and Core Web Vitals here."}</p>}
         </div>
         <div><h3 className="text-xs font-bold text-slate-800">Recent history</h3>
           {httpChecks.length ? <div className="mt-3 flex h-16 items-end gap-1">{httpChecks.slice(0, 30).reverse().map((check, index) => <span key={`${check.checked_at}-${index}`} title={`${check.success ? "Healthy" : "Failed"} · ${check.response_time_ms ?? "—"} ms`} className={`min-w-1 flex-1 rounded-t ${check.success ? "bg-emerald-400" : "bg-red-400"}`} style={{ height: `${Math.max(15, Math.min(100, check.response_time_ms ? 100 - Math.min(check.response_time_ms / 50, 70) : 30))}%` }} />)}</div> : <p className="mt-3 text-[11px] text-slate-500">No uptime history in the last 24 hours.</p>}
-          <div className="mt-3 space-y-1.5">{latestCertificateChecks.slice(0, 3).map((check) => { const asset = "asset_id" in check && check.asset_id ? certificateAssets.find((item) => item.id === check.asset_id) : null; const endpoint = "endpoint_id" in check && check.endpoint_id ? httpsEndpoints.find((item) => item.id === check.endpoint_id) : null; const label = asset?.service_name ?? asset?.hostname ?? (endpoint ? new URL(endpoint.endpoint_url).hostname : "Certificate"); return <p key={check.id} className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-500">TLS · {label}</span><span className={check.success ? "text-emerald-700" : "text-red-700"}>{check.success ? "Valid" : check.sanitized_error_message ?? "Invalid"} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>; })}</div>
+          {averageResponseMs !== null && averageResponseMs > 800 && <p className="mt-2 rounded-md bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-900">The monitor measured an average of {averageResponseMs} ms from its own network{p95ResponseMs === null ? "." : ` (95th percentile ${p95ResponseMs} ms).`} This is not a full page-load time. Compare the same URL from another network, then check hosting/CDN response and server logs for the same period.</p>}
+          <div className="mt-3 space-y-2">{latestCertificateChecks.slice(0, 3).map((check) => { const asset = "asset_id" in check && check.asset_id ? certificateAssets.find((item) => item.id === check.asset_id) : null; const endpoint = "endpoint_id" in check && check.endpoint_id ? httpsEndpoints.find((item) => item.id === check.endpoint_id) : null; const label = asset?.service_name ?? asset?.hostname ?? (endpoint ? new URL(endpoint.endpoint_url).hostname : "Certificate"); const guidance = certificateGuidance(check.error_code, check.success); return <div key={check.id} className="rounded-md bg-slate-50 px-2.5 py-2 text-[10px]"><p className="flex justify-between gap-2"><span className="truncate text-slate-600">TLS · {label}</span><span className={guidance.status === "invalid" ? "shrink-0 font-semibold text-red-700" : check.success ? "shrink-0 text-emerald-700" : "shrink-0 text-amber-700"}>{guidance.title} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>{!check.success && <><p className="mt-1 leading-4 text-slate-600">{check.sanitized_error_message ?? guidance.title}</p><p className="mt-1 leading-4 text-slate-500">Next step: {guidance.action}</p></>}</div>; })}</div>
           {performanceChecks.slice(0, 3).map((check) => { const metadata = check.metadata as Record<string, number | null>; return <p key={check.id} className="mt-1.5 flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Performance scan</span><span className={check.success ? "text-slate-600" : "text-red-700"}>{check.success ? `${metadata.performance_score ?? "—"}/100` : check.sanitized_error_message ?? "Failed"} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>; })}
         </div>
       </div>
@@ -242,6 +306,10 @@ function HealthMetric({ label, value, detail, tone = "normal" }: { label: string
 
 function formatCheckedAt(value: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-GB", { dateStyle: "short", timeStyle: "short", timeZone }).format(new Date(value));
+}
+
+function metricDisplay(value: unknown, suffix: string, missing = "—"): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${value}${suffix}` : missing;
 }
 
 function getSince24Hours(): string {

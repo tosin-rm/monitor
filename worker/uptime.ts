@@ -5,6 +5,7 @@ import { safeHttpCheck } from "@/lib/ssrf/safe-fetch";
 import { SsrfError } from "@/lib/ssrf/validate";
 import { inspectCertificate } from "@/lib/ssl/inspect";
 import type { CertificateInspection } from "@/lib/ssl/inspect";
+import { selectLighthouseFindings } from "@/lib/health/performance-guidance";
 import {
   classifyWorkerVsSiteFailure,
   isExpectedStatus,
@@ -706,7 +707,7 @@ async function checkWebsitePerformance(
   let success = false;
   let errorCode: string | null = null;
   let sanitizedError: string | null = null;
-  const metadata: Record<string, string | number | null> = {
+  const metadata: Record<string, unknown> = {
     provider: "pagespeed_insights",
     strategy: "mobile",
     performance_score: null,
@@ -738,8 +739,19 @@ async function checkWebsitePerformance(
     } else {
       const payload = await response.json() as {
         lighthouseResult?: {
-          categories?: Record<string, { score?: number }>;
-          audits?: Record<string, { numericValue?: number }>;
+          categories?: Record<string, {
+            score?: number;
+            auditRefs?: Array<{ id?: string; weight?: number }>;
+          }>;
+          audits?: Record<string, {
+            numericValue?: number;
+            score?: number | null;
+            scoreDisplayMode?: string;
+            title?: string;
+            description?: string;
+            displayValue?: string;
+            details?: { overallSavingsMs?: number };
+          }>;
         };
         loadingExperience?: { metrics?: Record<string, PageSpeedMetric> };
         originLoadingExperience?: { metrics?: Record<string, PageSpeedMetric> };
@@ -770,6 +782,7 @@ async function checkWebsitePerformance(
           accessibility_score: score("accessibility"),
           best_practices_score: score("best-practices"),
           seo_score: score("seo"),
+          category_findings: selectLighthouseFindings(lighthouse.categories, lighthouse.audits),
           lcp_ms: crux?.lcp_ms ?? lcp ?? audit("largest-contentful-paint"),
           inp_ms: crux?.inp_ms ?? inp,
           cls: crux?.cls ?? cls ?? audit("cumulative-layout-shift"),
