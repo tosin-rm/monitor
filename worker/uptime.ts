@@ -57,6 +57,7 @@ const PERFORMANCE_BATCH_SIZE = 10;
 const LEASE_SECONDS = 900;
 const SSL_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const PERFORMANCE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+type PerformanceStrategy = "mobile" | "desktop";
 
 function boundedInteger(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name];
@@ -666,7 +667,7 @@ function cruxNumber(metric: CruxMetric | undefined): number | null {
     : null;
 }
 
-async function readCruxFieldData(url: string, apiKey: string): Promise<{
+async function readCruxFieldData(url: string, apiKey: string, strategy: PerformanceStrategy): Promise<{
   lcp_ms: number | null; inp_ms: number | null; cls: number | null;
   fcp_ms: number | null; ttfb_ms: number | null;
 } | null> {
@@ -676,7 +677,7 @@ async function readCruxFieldData(url: string, apiKey: string): Promise<{
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         url,
-        formFactor: "PHONE",
+        formFactor: strategy === "mobile" ? "PHONE" : "DESKTOP",
         metrics: ["largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift", "first_contentful_paint", "experimental_time_to_first_byte"],
       }),
       signal: AbortSignal.timeout(15_000),
@@ -701,6 +702,7 @@ async function checkWebsitePerformance(
   admin: ReturnType<typeof createAdminClient>,
   website: PerformanceWebsite,
   now: Date,
+  strategy: PerformanceStrategy,
   apiKey?: string,
 ): Promise<void> {
   const checkedAt = now.toISOString();
@@ -709,7 +711,7 @@ async function checkWebsitePerformance(
   let sanitizedError: string | null = null;
   const metadata: Record<string, unknown> = {
     provider: "pagespeed_insights",
-    strategy: "mobile",
+    strategy,
     performance_score: null,
     accessibility_score: null,
     best_practices_score: null,
@@ -725,7 +727,7 @@ async function checkWebsitePerformance(
   try {
     const url = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
     url.searchParams.set("url", website.primary_url);
-    url.searchParams.set("strategy", "mobile");
+    url.searchParams.set("strategy", strategy);
     for (const category of ["performance", "accessibility", "best-practices", "seo"]) {
       url.searchParams.append("category", category);
     }
@@ -770,7 +772,7 @@ async function checkWebsitePerformance(
           return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null;
         };
         const field = payload.loadingExperience?.metrics ?? payload.originLoadingExperience?.metrics;
-        const crux = apiKey ? await readCruxFieldData(website.primary_url, apiKey) : null;
+        const crux = apiKey ? await readCruxFieldData(website.primary_url, apiKey, strategy) : null;
         const lcp = metricNumber(field?.LARGEST_CONTENTFUL_PAINT_MS);
         const inp = metricNumber(field?.INTERACTION_TO_NEXT_PAINT);
         const clsValue = metricNumber(field?.CUMULATIVE_LAYOUT_SHIFT_SCORE);
@@ -862,7 +864,8 @@ export async function runPerformanceBatch(options: {
       apiKeyConfigured: Boolean(options.apiKey ?? process.env.PAGESPEED_API_KEY),
     });
     const result = await runWithConcurrency(due, concurrency, async (website) => {
-      await checkWebsitePerformance(admin, website, now, options.apiKey ?? process.env.PAGESPEED_API_KEY);
+      await checkWebsitePerformance(admin, website, now, "mobile", options.apiKey ?? process.env.PAGESPEED_API_KEY);
+      await checkWebsitePerformance(admin, website, now, "desktop", options.apiKey ?? process.env.PAGESPEED_API_KEY);
     });
     processed = result.processed;
     failed = result.failed;

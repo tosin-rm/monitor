@@ -28,11 +28,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Website details" };
 
-export default function WebsiteDetailPage(props: { params: Promise<{ websiteId: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
+export default function WebsiteDetailPage(props: { params: Promise<{ websiteId: string }>; searchParams: Promise<{ error?: string; success?: string; device?: string }> }) {
   return <Suspense fallback={<WebsiteLoading />}><WebsiteDetailContent params={props.params} searchParams={props.searchParams} /></Suspense>;
 }
 
-async function WebsiteDetailContent({ params, searchParams }: { params: Promise<{ websiteId: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
+async function WebsiteDetailContent({ params, searchParams }: { params: Promise<{ websiteId: string }>; searchParams: Promise<{ error?: string; success?: string; device?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
   if (!context.organizationId) redirect("/setup");
@@ -74,7 +74,12 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
   const endpoints = endpointsResult.data ?? [];
   const endpointIds = endpoints.map((endpoint) => endpoint.id);
   const performanceChecks = performanceResult.data ?? [];
-  const latestPerformance = performanceChecks[0];
+  const selectedDevice = paramsResult.device === "desktop" ? "desktop" : "mobile";
+  const devicePerformanceChecks = performanceChecks.filter((check) => {
+    const metadata = check.metadata as Record<string, unknown> | null;
+    return (metadata?.strategy ?? "mobile") === selectedDevice;
+  });
+  const latestPerformance = devicePerformanceChecks[0];
   const performanceMetrics = latestPerformance?.metadata as Record<string, unknown> | undefined;
   const since24h = getSince24Hours();
   const recentHttpChecks = endpointIds.length
@@ -191,16 +196,18 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
         <HealthMetric label="Uptime · 24 hours" value={uptimePercent === null ? "No data" : `${uptimePercent.toFixed(2)}%`} detail={httpChecks.length ? `${httpChecks.length} checks` : endpoints.length ? "Awaiting checks" : "No endpoints configured"} tone={uptimePercent !== null && uptimePercent < 99 ? "warning" : "normal"} />
         <HealthMetric label="Average response" value={averageResponseMs === null ? "No data" : `${averageResponseMs} ms`} detail={p95ResponseMs === null ? "Last 24 hours" : `95th percentile ${p95ResponseMs} ms`} />
         <HealthMetric label="SSL/TLS certificates" value={certificateStatus} detail={certificateTargetCount ? `${httpsEndpoints.length} HTTPS endpoint(s) · ${certificateAssets.length} certificate asset(s)` : "Add an HTTPS endpoint to monitor SSL/TLS"} tone={confirmedCertificateProblem ? "warning" : "normal"} />
-        <HealthMetric label="Performance score" value={typeof performanceMetrics?.performance_score === "number" ? `${performanceMetrics.performance_score}/100` : latestPerformance ? "Scan failed" : "Awaiting scan"} detail={latestPerformance ? `Weighted mobile Lighthouse score · ${formatCheckedAt(latestPerformance.checked_at, context.timeZone)}` : "Daily Lighthouse scan"} tone={latestPerformance?.success === false || typeof performanceMetrics?.performance_score === "number" && performanceMetrics.performance_score < 50 ? "warning" : "normal"} />
+        <HealthMetric label={`Performance score · ${selectedDevice}`} value={typeof performanceMetrics?.performance_score === "number" ? `${performanceMetrics.performance_score}/100` : latestPerformance ? "Scan failed" : "Awaiting scan"} detail={latestPerformance ? `Weighted ${selectedDevice} Lighthouse score · ${formatCheckedAt(latestPerformance.checked_at, context.timeZone)}` : `Daily ${selectedDevice} Lighthouse scan`} tone={latestPerformance?.success === false || typeof performanceMetrics?.performance_score === "number" && performanceMetrics.performance_score < 50 ? "warning" : "normal"} />
       </div>
       <div className="grid gap-5 border-t border-slate-100 p-5 lg:grid-cols-[1fr_1fr]">
-        <div><h3 className="flex items-center gap-2 text-xs font-bold text-slate-800"><Zap size={14} className="text-amber-500" /> Performance · PageSpeed Insights</h3>
+        <div><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-xs font-bold text-slate-800"><Zap size={14} className="text-amber-500" /> Performance · PageSpeed Insights</h3><div aria-label="PageSpeed device" className="inline-flex rounded-lg border border-slate-200 p-0.5 text-[10px]">{(["mobile", "desktop"] as const).map((device) => <Link key={device} href={`/websites/${website.id}?device=${device}`} aria-current={selectedDevice === device ? "page" : undefined} className={`rounded-md px-2.5 py-1.5 font-semibold capitalize ${selectedDevice === device ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"}`}>{device}</Link>)}</div></div>
+          <p className="mt-1 text-[10px] leading-4 text-slate-500">Each device uses its own Lighthouse run and score. Scores can differ from another PageSpeed run because lab conditions and run-to-run variance differ; compare the same URL, device, and scan time.</p>
           {latestPerformance?.success && performanceMetrics ? <>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{performanceTiles.map(({ label, value }) => <div key={label} className="rounded-lg bg-slate-50 p-2.5"><p className="text-[10px] text-slate-400">{label}</p><p className="mt-1 text-xs font-semibold text-slate-700">{value}</p></div>)}</div>
             <p className="mt-3 text-[10px] text-slate-400">{Number(performanceMetrics.field_data_available) ? "Core Web Vitals use available real-user field data; other timing values are Lighthouse lab measurements." : "No CrUX field data was returned for this site. INP requires real-user field data; CLS uses Lighthouse when available."}</p>
-            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-              <h4 className="text-[11px] font-bold text-slate-800">What to fix first</h4>
-              <p className="mt-1 text-[10px] leading-4 text-slate-500">{typeof performanceMetrics.performance_score === "number" ? performanceScoreExplanation(performanceMetrics.performance_score) : "These findings are from the latest mobile Lighthouse scan."}</p>
+            <details className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+              <summary className="cursor-pointer text-[11px] font-bold text-slate-800">Why this score? · View recommended fixes</summary>
+              <div className="pt-2">
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">{typeof performanceMetrics.performance_score === "number" ? performanceScoreExplanation(performanceMetrics.performance_score) : `These findings are from the latest ${selectedDevice} Lighthouse scan.`}</p>
               {categories.map((category) => {
                 const findings = getLighthouseFindings(performanceMetrics, category);
                 const score = lighthouseCategoryScore(performanceMetrics, category);
@@ -222,14 +229,15 @@ async function WebsiteDetailContent({ params, searchParams }: { params: Promise<
               </div>}
               {!categories.some((category) => getLighthouseFindings(performanceMetrics, category).length) && metricGuidance.length === 0 && <p className="mt-2 text-[10px] leading-4 text-slate-500">This scan has no failed audits or measured metrics outside their target ranges. If the score is still low, open the full report for its audit breakdown.</p>}
               <a href={pageSpeedUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 hover:underline">Open full PageSpeed report <ExternalLink size={10} /></a>
-            </div>
-          </> : <p className="mt-3 rounded-lg bg-slate-50 px-3 py-4 text-[11px] text-slate-500">{latestPerformance?.sanitized_error_message ?? "A daily mobile Lighthouse scan will populate performance and Core Web Vitals here."}</p>}
+              </div>
+            </details>
+          </> : <p className="mt-3 rounded-lg bg-slate-50 px-3 py-4 text-[11px] text-slate-500">{latestPerformance?.sanitized_error_message ?? `A daily ${selectedDevice} Lighthouse scan will populate performance and Core Web Vitals here.`}</p>}
         </div>
         <div><h3 className="text-xs font-bold text-slate-800">Recent history</h3>
           {httpChecks.length ? <div className="mt-3 flex h-16 items-end gap-1">{httpChecks.slice(0, 30).reverse().map((check, index) => <span key={`${check.checked_at}-${index}`} title={`${check.success ? "Healthy" : "Failed"} · ${check.response_time_ms ?? "—"} ms`} className={`min-w-1 flex-1 rounded-t ${check.success ? "bg-emerald-400" : "bg-red-400"}`} style={{ height: `${Math.max(15, Math.min(100, check.response_time_ms ? 100 - Math.min(check.response_time_ms / 50, 70) : 30))}%` }} />)}</div> : <p className="mt-3 text-[11px] text-slate-500">No uptime history in the last 24 hours.</p>}
           {averageResponseMs !== null && averageResponseMs > 800 && <p className="mt-2 rounded-md bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-900">The monitor measured an average of {averageResponseMs} ms from its own network{p95ResponseMs === null ? "." : ` (95th percentile ${p95ResponseMs} ms).`} This is not a full page-load time. Compare the same URL from another network, then check hosting/CDN response and server logs for the same period.</p>}
           <div className="mt-3 space-y-2">{latestCertificateChecks.slice(0, 3).map((check) => { const asset = "asset_id" in check && check.asset_id ? certificateAssets.find((item) => item.id === check.asset_id) : null; const endpoint = "endpoint_id" in check && check.endpoint_id ? httpsEndpoints.find((item) => item.id === check.endpoint_id) : null; const label = asset?.service_name ?? asset?.hostname ?? (endpoint ? new URL(endpoint.endpoint_url).hostname : "Certificate"); const guidance = certificateGuidance(check.error_code, check.success); return <div key={check.id} className="rounded-md bg-slate-50 px-2.5 py-2 text-[10px]"><p className="flex justify-between gap-2"><span className="truncate text-slate-600">TLS · {label}</span><span className={guidance.status === "invalid" ? "shrink-0 font-semibold text-red-700" : check.success ? "shrink-0 text-emerald-700" : "shrink-0 text-amber-700"}>{guidance.title} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>{!check.success && <><p className="mt-1 leading-4 text-slate-600">{check.sanitized_error_message ?? guidance.title}</p><p className="mt-1 leading-4 text-slate-500">Next step: {guidance.action}</p></>}</div>; })}</div>
-          {performanceChecks.slice(0, 3).map((check) => { const metadata = check.metadata as Record<string, number | null>; return <p key={check.id} className="mt-1.5 flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Performance scan</span><span className={check.success ? "text-slate-600" : "text-red-700"}>{check.success ? `${metadata.performance_score ?? "—"}/100` : check.sanitized_error_message ?? "Failed"} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>; })}
+          {devicePerformanceChecks.slice(0, 3).map((check) => { const metadata = check.metadata as Record<string, unknown>; return <p key={check.id} className="mt-1.5 flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">{selectedDevice} performance scan</span><span className={check.success ? "text-slate-600" : "text-red-700"}>{check.success ? `${typeof metadata.performance_score === "number" ? metadata.performance_score : "—"}/100` : check.sanitized_error_message ?? "Failed"} · {formatCheckedAt(check.checked_at, context.timeZone)}</span></p>; })}
         </div>
       </div>
     </section>
