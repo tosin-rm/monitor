@@ -58,6 +58,35 @@ export function assessCertificate(options: {
   };
 }
 
+export function assessHandshakeFailure(options: {
+  code: string;
+  hasCertificate: boolean;
+  hostnameMatches: boolean;
+  validFrom: string | null;
+  validTo: string | null;
+  now: Date;
+}): CertificateInspection {
+  const inspection = assessCertificate({
+    authorized: false,
+    handshakeOk: false,
+    hostnameMatches: options.hostnameMatches,
+    validFrom: options.validFrom,
+    validTo: options.validTo,
+    now: options.now,
+  });
+  if (!options.hasCertificate && options.code !== "CERT_HAS_EXPIRED" && options.code !== "ERR_TLS_CERT_ALTNAME_INVALID") {
+    inspection.errorCode = options.code;
+    inspection.sanitizedError = "TLS handshake failed";
+  } else if (options.code === "CERT_HAS_EXPIRED") {
+    inspection.errorCode = "expired";
+    inspection.sanitizedError = "Certificate has expired";
+  } else if (inspection.errorCode === "untrusted") {
+    inspection.errorCode = options.code;
+    inspection.sanitizedError = "TLS handshake failed";
+  }
+  return inspection;
+}
+
 export async function inspectCertificate(options: {
   hostname: string;
   now?: Date;
@@ -148,22 +177,14 @@ export async function inspectCertificate(options: {
       const hostnameMatches = hasCertificate
         ? !checkServerIdentity(hostname, cert)
         : code !== "ERR_TLS_CERT_ALTNAME_INVALID";
-      const inspection = assessCertificate({
-        authorized: false,
-        handshakeOk: false,
+      finish(assessHandshakeFailure({
+        code,
+        hasCertificate,
         hostnameMatches,
         validFrom: hasCertificate && cert.valid_from ? new Date(cert.valid_from).toISOString() : null,
         validTo: hasCertificate && cert.valid_to ? new Date(cert.valid_to).toISOString() : null,
         now,
-      });
-      if (code === "CERT_HAS_EXPIRED") {
-        inspection.errorCode = "expired";
-        inspection.sanitizedError = "Certificate has expired";
-      } else if (inspection.errorCode === "untrusted") {
-        inspection.errorCode = code;
-        inspection.sanitizedError = "TLS handshake failed";
-      }
-      finish(inspection);
+      }));
     });
   });
 }

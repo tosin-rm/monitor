@@ -178,8 +178,8 @@ export function buildMetricGuidance(
   return guidance;
 }
 
-export function performanceScoreExplanation(score: number): string {
-  return `Lighthouse mobile lab score: ${score}/100. It is a weighted score of performance audits, not an overall site-health grade. Accessibility, SEO, and best-practices scores are separate and do not lower this performance score.`;
+export function performanceScoreExplanation(score: number, strategy: "mobile" | "desktop" = "mobile"): string {
+  return `Lighthouse ${strategy} lab score: ${score}/100. It is a weighted score of performance audits, not an overall site-health grade. Accessibility, SEO, and best-practices scores are separate and do not lower this performance score.`;
 }
 
 export function lighthouseCategoryScore(metadata: Record<string, unknown> | null | undefined, category: LighthouseCategory): number | null {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assessCertificate } from "@/lib/ssl/inspect";
+import { assessCertificate, assessHandshakeFailure } from "@/lib/ssl/inspect";
+import { certificateGuidance } from "@/lib/ssl/guidance";
 
 const now = new Date("2025-01-01T00:00:00.000Z");
 
@@ -49,5 +50,29 @@ describe("certificate assessment", () => {
       validFrom: "2025-01-02T00:00:00.000Z",
       validTo: "2025-02-01T00:00:00.000Z",
     }).errorCode).toBe("not_yet_valid");
+  });
+
+  it("does not report missing certificates during transport failures as untrusted certificates", () => {
+    const result = assessHandshakeFailure({
+      code: "ECONNRESET",
+      hasCertificate: false,
+      hostnameMatches: true,
+      validFrom: null,
+      validTo: null,
+      now,
+    });
+    expect(result.errorCode).toBe("ECONNRESET");
+    expect(certificateGuidance(result.errorCode, result.success).status).toBe("unconfirmed");
+  });
+
+  it("still identifies a server-reported expired certificate when the handshake fails", () => {
+    expect(assessHandshakeFailure({
+      code: "CERT_HAS_EXPIRED",
+      hasCertificate: false,
+      hostnameMatches: true,
+      validFrom: null,
+      validTo: null,
+      now,
+    }).errorCode).toBe("expired");
   });
 });

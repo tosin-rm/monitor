@@ -5,6 +5,7 @@ import { z } from "zod";
 import { can } from "@/lib/auth/roles";
 import { getAuthContext } from "@/lib/auth/session";
 import { LIFECYCLE_STATUSES } from "@/lib/lifecycle/status";
+import { checkWebsitePerformance } from "@/lib/health/pagespeed";
 import { normalizeDomain, normalizeHttpUrl } from "@/lib/urls";
 import { parsePublicHttpUrl } from "@/lib/ssrf/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -133,6 +134,69 @@ export async function updateWebsiteLifecycle(formData: FormData): Promise<void> 
     redirect(`/websites/${websiteId}?error=lifecycle`);
   }
   redirect(`/websites/${websiteId}?success=lifecycle`);
+}
+
+export async function runWebsitePerformanceScan(formData: FormData): Promise<void> {
+  const context = await requireManager("manage_websites");
+  const parsed = z.object({
+    websiteId: z.string().uuid(),
+    strategy: z.enum(["mobile", "desktop"]),
+  }).safeParse({
+    websiteId: String(formData.get("websiteId") ?? ""),
+    strategy: String(formData.get("strategy") ?? ""),
+  });
+  if (!parsed.success) {
+    redirect("/websites?error=invalid");
+  }
+  const { websiteId, strategy } = parsed.data;
+  const supabase = await createClient();
+  const { data: website, error: websiteError } = await supabase.from("websites")
+    .select("id, organization_id, primary_url")
+    .eq("id", websiteId)
+    .eq("organization_id", context.organizationId)
+    .eq("active", true)
+    .maybeSingle();
+  if (websiteError || !website) {
+    console.error("Performance scan website lookup failed", { code: websiteError?.code ?? "not_found" });
+    redirect(`/websites/${websiteId}?device=${strategy}&error=scan`);
+  }
+
+  const admin = createAdminClient();
+  const { data: recentChecks, error: checksError } = await admin.from("check_results")
+    .select("checked_at, metadata")
+    .eq("organization_id", context.organizationId)
+    .eq("website_id", websiteId)
+    .eq("check_type", "performance")
+    .order("checked_at", { ascending: false })
+    .limit(20);
+  if (checksError) {
+    console.error("Performance scan cooldown lookup failed", { code: checksError.code });
+    redirect(`/websites/${websiteId}?device=${strategy}&error=scan`);
+  }
+  const latestForDevice = recentChecks?.find((check) => {
+    const metadata = check.metadata as Record<string, unknown> | null;
+    return (metadata?.strategy ?? "mobile") === strategy;
+  });
+  if (latestForDevice && Date.now() - new Date(latestForDevice.checked_at).getTime() < 5 * 60 * 1000) {
+    redirect(`/websites/${websiteId}?device=${strategy}&success=scan_recent`);
+  }
+
+  let success: boolean;
+  try {
+    ({ success } = await checkWebsitePerformance(
+      admin,
+      website,
+      new Date(),
+      strategy,
+      process.env.PAGESPEED_API_KEY,
+    ));
+  } catch (error) {
+    console.error("On-demand performance scan failed", {
+      code: error && typeof error === "object" && "code" in error ? error.code : "scan_error",
+    });
+    redirect(`/websites/${websiteId}?device=${strategy}&error=scan`);
+  }
+  redirect(`/websites/${websiteId}?device=${strategy}&success=${success ? "scan" : "scan_failed"}`);
 }
 
 function readAssetForm(formData: FormData, existing?: {

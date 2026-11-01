@@ -5,7 +5,7 @@ import { safeHttpCheck } from "@/lib/ssrf/safe-fetch";
 import { SsrfError } from "@/lib/ssrf/validate";
 import { inspectCertificate } from "@/lib/ssl/inspect";
 import type { CertificateInspection } from "@/lib/ssl/inspect";
-import { selectLighthouseFindings } from "@/lib/health/performance-guidance";
+import { checkWebsitePerformance } from "@/lib/health/pagespeed";
 import {
   classifyWorkerVsSiteFailure,
   isExpectedStatus,
@@ -50,6 +50,13 @@ type PerformanceWebsite = {
   organization_id: string;
   primary_url: string;
   performance_checked_at: string | null;
+  performance_desktop_checked_at: string | null;
+};
+
+type WebsiteCertificateTarget = {
+  id: string;
+  organization_id: string;
+  primary_url: string;
 };
 
 const BATCH_SIZE = 50;
@@ -57,8 +64,6 @@ const PERFORMANCE_BATCH_SIZE = 10;
 const LEASE_SECONDS = 900;
 const SSL_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const PERFORMANCE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-type PerformanceStrategy = "mobile" | "desktop";
-
 function boundedInteger(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
@@ -305,14 +310,14 @@ async function checkCertificateAsset(
     checked_at: checkedAt,
     success: inspection.success,
     response_time_ms: Date.now() - startedAt,
-    certificate_not_after: inspection.hostnameMatches ? inspection.validTo : null,
+    certificate_not_after: inspection.validTo,
     error_code: inspection.errorCode,
     sanitized_error_message: inspection.sanitizedError,
     metadata: {
       handshake_ok: inspection.handshakeOk,
       authorized: inspection.authorized,
       hostname_matches: inspection.hostnameMatches,
-      valid_from: inspection.hostnameMatches ? inspection.validFrom : null,
+      valid_from: inspection.validFrom,
       days_remaining: inspection.daysRemaining,
     },
   });
@@ -426,20 +431,55 @@ async function checkEndpointCertificate(
     checked_at: checkedAt,
     success: inspection.success,
     response_time_ms: Date.now() - startedAt,
-    certificate_not_after: inspection.hostnameMatches ? inspection.validTo : null,
+    certificate_not_after: inspection.validTo,
     error_code: inspection.errorCode,
     sanitized_error_message: inspection.sanitizedError,
     metadata: {
       handshake_ok: inspection.handshakeOk,
       authorized: inspection.authorized,
       hostname_matches: inspection.hostnameMatches,
-      valid_from: inspection.hostnameMatches ? inspection.validFrom : null,
+      valid_from: inspection.validFrom,
       days_remaining: inspection.daysRemaining,
       hostname,
       source: "https_endpoint",
     },
   });
   if (error) throw error;
+}
+
+async function checkWebsiteCertificate(
+  admin: ReturnType<typeof createAdminClient>,
+  website: WebsiteCertificateTarget,
+  now: Date,
+): Promise<void> {
+  const hostname = new URL(website.primary_url).hostname;
+  const inspection = await inspectCertificate({ hostname, now });
+  const checkedAt = now.toISOString();
+  const { error } = await admin.from("check_results").insert({
+    organization_id: website.organization_id,
+    website_id: website.id,
+    check_type: "ssl",
+    checked_at: checkedAt,
+    success: inspection.success,
+    certificate_not_after: inspection.validTo,
+    error_code: inspection.errorCode,
+    sanitized_error_message: inspection.sanitizedError,
+    metadata: {
+      handshake_ok: inspection.handshakeOk,
+      authorized: inspection.authorized,
+      hostname_matches: inspection.hostnameMatches,
+      valid_from: inspection.validFrom,
+      days_remaining: inspection.daysRemaining,
+      hostname,
+      source: "website_primary_url",
+    },
+  });
+  if (error) throw error;
+  const { error: updateError } = await admin.from("websites")
+    .update({ ssl_checked_at: checkedAt })
+    .eq("id", website.id)
+    .eq("organization_id", website.organization_id);
+  if (updateError) throw updateError;
 }
 
 export async function runUptimeBatch(options: {
@@ -589,7 +629,25 @@ export async function runSslBatch(options: {
     const assetResult = await runWithConcurrency(due, concurrency, (asset) =>
       checkCertificateAsset(admin, asset, now),
     );
-    const { data: endpointData, error: endpointError } = await admin.from("monitoring_endpoints")
+      const websiteStaleBefore = new Date(now.getTime() - intervalMs).toISOString();
+      const { data: websiteData, error: websiteError } = await admin.from("websites")
+        .select("id, organization_id, primary_url, ssl_checked_at, client:clients!inner(active)")
+        .eq("active", true)
+        .eq("client.active", true)
+        .ilike("primary_url", "https://%")
+        .or(`ssl_checked_at.is.null,ssl_checked_at.lte.${websiteStaleBefore}`)
+        .order("ssl_checked_at", { ascending: true, nullsFirst: true })
+        .limit(BATCH_SIZE);
+      if (websiteError) throw websiteError;
+      const websitesDue = (websiteData ?? []).map((website) => ({
+        id: website.id,
+        organization_id: website.organization_id,
+        primary_url: website.primary_url,
+      })) as WebsiteCertificateTarget[];
+      const websiteResult = await runWithConcurrency(websitesDue, concurrency, (website) =>
+        checkWebsiteCertificate(admin, website, now),
+      );
+      const { data: endpointData, error: endpointError } = await admin.from("monitoring_endpoints")
       .select("id, organization_id, website_id, endpoint_url, website:websites!inner(active, client:clients!inner(active))")
       .eq("enabled", true)
       .eq("website.active", true)
@@ -610,8 +668,8 @@ export async function runSslBatch(options: {
     const endpointResult = await runWithConcurrency(endpointDue, concurrency, (endpoint) =>
       checkEndpointCertificate(admin, endpoint, now),
     );
-    processed = assetResult.processed + endpointResult.processed;
-    failed = assetResult.failed + endpointResult.failed;
+    processed = assetResult.processed + websiteResult.processed + endpointResult.processed;
+    failed = assetResult.failed + websiteResult.failed + endpointResult.failed;
     const { error: finishError } = await admin
       .from("job_runs")
       .update({
@@ -652,171 +710,6 @@ export async function runSslBatch(options: {
   }
 }
 
-type PageSpeedMetric = { percentile?: number; category?: string };
-type CruxMetric = { percentiles?: { p75?: number } };
-
-function metricNumber(metric: PageSpeedMetric | undefined): number | null {
-  return typeof metric?.percentile === "number" && Number.isFinite(metric.percentile)
-    ? Math.round(metric.percentile * 100) / 100
-    : null;
-}
-
-function cruxNumber(metric: CruxMetric | undefined): number | null {
-  return typeof metric?.percentiles?.p75 === "number" && Number.isFinite(metric.percentiles.p75)
-    ? metric.percentiles.p75
-    : null;
-}
-
-async function readCruxFieldData(url: string, apiKey: string, strategy: PerformanceStrategy): Promise<{
-  lcp_ms: number | null; inp_ms: number | null; cls: number | null;
-  fcp_ms: number | null; ttfb_ms: number | null;
-} | null> {
-  try {
-    const response = await fetch(`https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=${encodeURIComponent(apiKey)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        url,
-        formFactor: strategy === "mobile" ? "PHONE" : "DESKTOP",
-        metrics: ["largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift", "first_contentful_paint", "experimental_time_to_first_byte"],
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok) return null;
-    const payload = await response.json() as { record?: { metrics?: Record<string, CruxMetric> } };
-    const metrics = payload.record?.metrics;
-    if (!metrics || !Object.keys(metrics).length) return null;
-    return {
-      lcp_ms: cruxNumber(metrics.largest_contentful_paint),
-      inp_ms: cruxNumber(metrics.interaction_to_next_paint),
-      cls: cruxNumber(metrics.cumulative_layout_shift),
-      fcp_ms: cruxNumber(metrics.first_contentful_paint),
-      ttfb_ms: cruxNumber(metrics.experimental_time_to_first_byte),
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function checkWebsitePerformance(
-  admin: ReturnType<typeof createAdminClient>,
-  website: PerformanceWebsite,
-  now: Date,
-  strategy: PerformanceStrategy,
-  apiKey?: string,
-): Promise<void> {
-  const checkedAt = now.toISOString();
-  let success = false;
-  let errorCode: string | null = null;
-  let sanitizedError: string | null = null;
-  const metadata: Record<string, unknown> = {
-    provider: "pagespeed_insights",
-    strategy,
-    performance_score: null,
-    accessibility_score: null,
-    best_practices_score: null,
-    seo_score: null,
-    lcp_ms: null,
-    inp_ms: null,
-    cls: null,
-    fcp_ms: null,
-    ttfb_ms: null,
-    field_data_available: 0,
-  };
-
-  try {
-    const url = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
-    url.searchParams.set("url", website.primary_url);
-    url.searchParams.set("strategy", strategy);
-    for (const category of ["performance", "accessibility", "best-practices", "seo"]) {
-      url.searchParams.append("category", category);
-    }
-    if (apiKey) url.searchParams.set("key", apiKey);
-    const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-    if (!response.ok) {
-      errorCode = response.status === 429 ? "provider_rate_limited" : "provider_unavailable";
-      sanitizedError = response.status === 429
-        ? "Performance provider rate limit reached"
-        : "Performance provider could not complete the scan";
-    } else {
-      const payload = await response.json() as {
-        lighthouseResult?: {
-          categories?: Record<string, {
-            score?: number;
-            auditRefs?: Array<{ id?: string; weight?: number }>;
-          }>;
-          audits?: Record<string, {
-            numericValue?: number;
-            score?: number | null;
-            scoreDisplayMode?: string;
-            title?: string;
-            description?: string;
-            displayValue?: string;
-            details?: { overallSavingsMs?: number };
-          }>;
-        };
-        loadingExperience?: { metrics?: Record<string, PageSpeedMetric> };
-        originLoadingExperience?: { metrics?: Record<string, PageSpeedMetric> };
-      };
-      const lighthouse = payload.lighthouseResult;
-      if (!lighthouse?.categories || !lighthouse.audits) {
-        errorCode = "invalid_provider_response";
-        sanitizedError = "Performance provider returned incomplete results";
-      } else {
-        const score = (key: string) => {
-          const value = lighthouse.categories?.[key]?.score;
-          return typeof value === "number" ? Math.round(value * 100) : null;
-        };
-        const audit = (key: string) => {
-          const value = lighthouse.audits?.[key]?.numericValue;
-          return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null;
-        };
-        const field = payload.loadingExperience?.metrics ?? payload.originLoadingExperience?.metrics;
-        const crux = apiKey ? await readCruxFieldData(website.primary_url, apiKey, strategy) : null;
-        const lcp = metricNumber(field?.LARGEST_CONTENTFUL_PAINT_MS);
-        const inp = metricNumber(field?.INTERACTION_TO_NEXT_PAINT);
-        const clsValue = metricNumber(field?.CUMULATIVE_LAYOUT_SHIFT_SCORE);
-        const cls = clsValue === null ? null : clsValue / 100;
-        const fcp = metricNumber(field?.FIRST_CONTENTFUL_PAINT_MS);
-        const ttfb = metricNumber(field?.EXPERIMENTAL_TIME_TO_FIRST_BYTE);
-        Object.assign(metadata, {
-          performance_score: score("performance"),
-          accessibility_score: score("accessibility"),
-          best_practices_score: score("best-practices"),
-          seo_score: score("seo"),
-          category_findings: selectLighthouseFindings(lighthouse.categories, lighthouse.audits),
-          lcp_ms: crux?.lcp_ms ?? lcp ?? audit("largest-contentful-paint"),
-          inp_ms: crux?.inp_ms ?? inp,
-          cls: crux?.cls ?? cls ?? audit("cumulative-layout-shift"),
-          fcp_ms: crux?.fcp_ms ?? fcp ?? audit("first-contentful-paint"),
-          ttfb_ms: crux?.ttfb_ms ?? ttfb,
-          field_data_available: Number(Boolean(crux || field && Object.keys(field).length)),
-        });
-        success = true;
-      }
-    }
-  } catch {
-    errorCode = "provider_request_failed";
-    sanitizedError = "Performance provider request failed or timed out";
-  }
-
-  const { error } = await admin.from("check_results").insert({
-    organization_id: website.organization_id,
-    website_id: website.id,
-    check_type: "performance",
-    checked_at: checkedAt,
-    success,
-    error_code: errorCode,
-    sanitized_error_message: sanitizedError,
-    metadata,
-  });
-  if (error) throw error;
-  const { error: updateError } = await admin.from("websites")
-    .update({ performance_checked_at: checkedAt })
-    .eq("id", website.id).eq("organization_id", website.organization_id);
-  if (updateError) throw updateError;
-}
-
 export async function runPerformanceBatch(options: {
   workerId?: string;
   now?: Date;
@@ -850,10 +743,10 @@ export async function runPerformanceBatch(options: {
     ) * 1000;
     const staleBefore = new Date(now.getTime() - intervalMs).toISOString();
     const { data, error } = await admin.from("websites")
-      .select("id, organization_id, primary_url, performance_checked_at, client:clients!inner(active)")
+      .select("id, organization_id, primary_url, performance_checked_at, performance_desktop_checked_at, client:clients!inner(active)")
       .eq("active", true)
       .eq("client.active", true)
-      .or(`performance_checked_at.is.null,performance_checked_at.lte.${staleBefore}`)
+      .or(`performance_checked_at.is.null,performance_checked_at.lte.${staleBefore},performance_desktop_checked_at.is.null,performance_desktop_checked_at.lte.${staleBefore}`)
       .order("performance_checked_at", { ascending: true, nullsFirst: true })
       .limit(PERFORMANCE_BATCH_SIZE);
     if (error) throw error;
@@ -864,8 +757,18 @@ export async function runPerformanceBatch(options: {
       apiKeyConfigured: Boolean(options.apiKey ?? process.env.PAGESPEED_API_KEY),
     });
     const result = await runWithConcurrency(due, concurrency, async (website) => {
-      await checkWebsitePerformance(admin, website, now, "mobile", options.apiKey ?? process.env.PAGESPEED_API_KEY);
-      await checkWebsitePerformance(admin, website, now, "desktop", options.apiKey ?? process.env.PAGESPEED_API_KEY);
+      if (
+        !website.performance_checked_at
+        || now.getTime() - new Date(website.performance_checked_at).getTime() >= intervalMs
+      ) {
+        await checkWebsitePerformance(admin, website, now, "mobile", options.apiKey ?? process.env.PAGESPEED_API_KEY);
+      }
+      if (
+        !website.performance_desktop_checked_at
+        || now.getTime() - new Date(website.performance_desktop_checked_at).getTime() >= intervalMs
+      ) {
+        await checkWebsitePerformance(admin, website, now, "desktop", options.apiKey ?? process.env.PAGESPEED_API_KEY);
+      }
     });
     processed = result.processed;
     failed = result.failed;
