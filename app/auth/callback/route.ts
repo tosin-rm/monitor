@@ -63,6 +63,15 @@ export async function GET(request: NextRequest) {
   if (isPasswordRecovery) {
     return NextResponse.redirect(new URL("/reset-password", baseUrl));
   }
+  if (isInvitation) {
+    const { data: accepted, error } = await supabase.rpc("accept_team_invitation");
+    if (error || accepted !== true) {
+      console.error("Team invitation could not be accepted", {
+        code: error?.code ?? "invitation_not_found",
+      });
+      return NextResponse.redirect(new URL("/login?error=invite-invalid", baseUrl));
+    }
+  }
   if (type === "signup") {
     const { data: { user } } = await supabase.auth.getUser();
     const configuredOwner = bootstrapOwnerEmail();

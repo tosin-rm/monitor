@@ -181,6 +181,7 @@ After the first owner has created the workspace:
 2. They enter the teammate’s email and select Member or Admin. Only an owner can grant the Admin role; owner-role assignment is restricted to the owner.
 3. Monitor sends an invitation email. The teammate opens the invitation, follows the link back to Monitor, sets a password at `/set-password`, then signs in at `/login`.
 4. If the invitation expires or is sent to the wrong address, ask an owner/admin to arrange a fresh invitation. Never reuse another teammate’s account.
+5. To cancel an unaccepted invitation, use **Delete** beside it in **Team → Pending invitations** and confirm. This revokes the invite and permanently deletes its Supabase Auth account. To remove an existing member, use **Delete account** beside their name; this permanently deletes their sign-in account and workspace access. These actions cannot be undone. An owner cannot delete their own account, and the final owner cannot be deleted.
 
 The invitation flow depends on Supabase Auth email delivery and the production redirect URL being configured. An account that can authenticate but has no organization membership is not automatically granted access; it must be invited by an authorized team administrator.
 

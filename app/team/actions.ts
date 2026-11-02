@@ -10,6 +10,7 @@ import { getAuthContext } from "@/lib/auth/session";
 
 const emailSchema = z.string().trim().email().max(254);
 const requestIdSchema = z.string().uuid();
+const invitationIdSchema = z.string().uuid();
 
 export async function reviewWorkspaceAccess(formData: FormData): Promise<void> {
   const context = await getAuthContext();
@@ -119,18 +120,64 @@ export async function removeMember(formData: FormData): Promise<void> {
   if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_members")) redirect("/team?error=forbidden");
 
-  const targetUserId = String(formData.get("userId") ?? "");
-  if (!targetUserId) redirect("/team?error=invalid");
+  const parsedUserId = requestIdSchema.safeParse(String(formData.get("userId") ?? ""));
+  if (!parsedUserId.success) redirect("/team?error=invalid");
 
   const admin = createAdminClient();
-  const { error } = await admin.rpc("remove_team_member", {
+  const { error: accessError } = await admin.rpc("prepare_team_member_account_deletion", {
     p_organization_id: context.organizationId,
     p_actor_user_id: context.userId,
-    p_target_user_id: targetUserId,
+    p_target_user_id: parsedUserId.data,
   });
-  if (error) {
-    console.error("Team member removal failed", { code: error.code });
+  if (accessError) {
+    console.error("Preparing team account deletion failed", { code: accessError.code });
     redirect("/team?error=member_update");
   }
-  redirect("/team?success=removed");
+  const { error: deleteError } = await admin.auth.admin.deleteUser(parsedUserId.data);
+  if (deleteError) {
+    console.error("Team member Auth account deletion failed", {
+      code: deleteError.code ?? "auth_error",
+    });
+    redirect("/team?error=account_delete");
+  }
+  redirect("/team?success=account_deleted");
+}
+
+export async function cancelInvitation(formData: FormData): Promise<void> {
+  const context = await getAuthContext();
+  if (!context) redirect("/login");
+  if (!context.organizationId) redirect("/access-pending");
+  if (!can(context.role, "manage_members")) redirect("/team?error=forbidden");
+
+  const invitationId = invitationIdSchema.safeParse(
+    String(formData.get("invitationId") ?? ""),
+  );
+  if (!invitationId.success) redirect("/team?error=invalid");
+
+  const admin = createAdminClient();
+  const { data: userId, error: prepareError } = await admin.rpc(
+    "prepare_pending_invitation_account_deletion",
+    {
+      p_organization_id: context.organizationId,
+      p_actor_user_id: context.userId,
+      p_invitation_id: invitationId.data,
+    },
+  );
+  if (prepareError) {
+    console.error("Preparing invitation cancellation failed", {
+      code: prepareError.code,
+    });
+    redirect("/team?error=invitation_cancel");
+  }
+
+  if (userId) {
+    const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      console.error("Invited Auth account deletion failed", {
+        code: deleteError.code ?? "auth_error",
+      });
+      redirect("/team?error=account_delete");
+    }
+  }
+  redirect("/team?success=invitation_cancelled");
 }

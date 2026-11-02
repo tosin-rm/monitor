@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Activity, ArrowLeft, Check, MailPlus, Shield, UserCheck, UserRound, Users, X } from "lucide-react";
-import { changeMemberRole, inviteMember, removeMember, reviewWorkspaceAccess } from "@/app/team/actions";
+import { cancelInvitation, changeMemberRole, inviteMember, removeMember, reviewWorkspaceAccess } from "@/app/team/actions";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
 import { can, MEMBER_ROLES, parseRole } from "@/lib/auth/roles";
 import { getRequestAuthContext } from "@/lib/auth/session";
@@ -124,7 +124,7 @@ async function TeamContent({
                         </form>
                         <form action={removeMember}>
                           <input type="hidden" name="userId" value={member.user_id} />
-                          <ConfirmSubmit type="submit" confirmation={`Remove ${member.email} from this workspace? They will lose access immediately.`} className="h-8 rounded-md px-2 text-[11px] font-semibold text-red-600 hover:bg-red-50">Remove</ConfirmSubmit>
+                          <ConfirmSubmit type="submit" confirmation={`Permanently delete ${member.email}'s Monitor sign-in account? This removes the account from Supabase Auth and revokes all access.`} className="h-8 rounded-md px-2 text-[11px] font-semibold text-red-600 hover:bg-red-50">Delete account</ConfirmSubmit>
                         </form>
                       </div>
                     )}
@@ -194,7 +194,13 @@ async function TeamContent({
                   {invitations.map((invitation) => (
                     <div key={invitation.id} className="flex items-center justify-between gap-3 px-5 py-3">
                       <div className="min-w-0"><p className="truncate text-xs font-medium text-slate-700">{invitation.email}</p><p className="mt-1 text-[10px] capitalize text-slate-400">{invitation.role}</p></div>
-                      <p className="shrink-0 text-[10px] text-slate-400">Expires {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(invitation.expires_at))}</p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <p className="text-[10px] text-slate-400">Expires {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(invitation.expires_at))}</p>
+                        <form action={cancelInvitation}>
+                          <input type="hidden" name="invitationId" value={invitation.id} />
+                          <ConfirmSubmit type="submit" confirmation={`Cancel the invitation to ${invitation.email} and permanently delete the invited Monitor sign-in account?`} className="h-8 rounded-md px-2 text-[11px] font-semibold text-red-600 hover:bg-red-50">Delete</ConfirmSubmit>
+                        </form>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -229,6 +235,8 @@ function teamErrorMessage(error: string): string {
   if (error === "invite") return "Invitation email could not be sent. Check Supabase Auth email configuration and the address.";
   if (error === "record_invite") return "The email was invited, but workspace access could not be recorded. Please contact an owner.";
   if (error === "access_review") return "This access request could not be reviewed. It may have already been handled; refresh the page and try again.";
+  if (error === "account_delete") return "Workspace access has been removed, but the sign-in account could not be deleted. Contact the workspace operator before the person attempts to sign in again.";
+  if (error === "invitation_cancel") return "The invitation could not be canceled. It may already have been accepted or revoked; refresh the page and try again.";
   return "The requested team update could not be completed. Confirm that at least one owner remains.";
 }
 
@@ -236,7 +244,8 @@ function teamSuccessMessage(success: string): string {
   if (success === "access_approved") return "The account was approved as a Member and can now access the workspace.";
   if (success === "access_rejected") return "The access request was rejected.";
   if (success === "invited") return "Invitation sent. The teammate can set a password from the invitation email.";
-  if (success === "removed") return "Team member access has been removed.";
+  if (success === "account_deleted") return "The team member's account and workspace access have been permanently deleted.";
+  if (success === "invitation_cancelled") return "The invitation was canceled, and any associated sign-in account was permanently deleted.";
   return "Team member role has been updated.";
 }
 
