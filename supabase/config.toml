@@ -1,2 +1,5 @@
 [functions.monitor-jobs]
 verify_jwt = false
+
+[auth.email]
+enable_confirmations = false
