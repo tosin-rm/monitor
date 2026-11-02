@@ -20,7 +20,7 @@ export default function SettingsPage(props: { searchParams: Promise<{ error?: st
 async function SettingsContent({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const { error, success } = await searchParams;
   if (!can(context.role, "manage_notifications")) {
     return <main className="min-h-screen bg-white px-5 py-8"><div className="mx-auto max-w-4xl"><Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500"><ArrowLeft size={14} /> Overview</Link><section className="mt-6 rounded-xl border border-slate-200 bg-white p-6"><ShieldCheck size={20} className="text-slate-400" /><h1 className="mt-3 text-lg font-bold text-slate-900">Notification settings</h1><p className="mt-2 text-sm text-slate-500">Only workspace administrators can view or change notification recipients and delivery settings.</p></section></div></main>;

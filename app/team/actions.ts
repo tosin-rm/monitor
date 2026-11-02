@@ -9,11 +9,38 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext } from "@/lib/auth/session";
 
 const emailSchema = z.string().trim().email().max(254);
+const requestIdSchema = z.string().uuid();
+
+export async function reviewWorkspaceAccess(formData: FormData): Promise<void> {
+  const context = await getAuthContext();
+  if (!context) redirect("/login");
+  if (!context.organizationId) redirect("/access-pending");
+  if (!can(context.role, "manage_members")) redirect("/team?error=forbidden");
+
+  const requestId = requestIdSchema.safeParse(String(formData.get("requestId") ?? ""));
+  const decision = String(formData.get("decision") ?? "");
+  if (!requestId.success || (decision !== "approve" && decision !== "reject")) {
+    redirect("/team?error=invalid");
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("review_workspace_access_request", {
+    p_organization_id: context.organizationId,
+    p_actor_user_id: context.userId,
+    p_request_id: requestId.data,
+    p_approve: decision === "approve",
+  });
+  if (error) {
+    console.error("Workspace access request review failed", { code: error.code });
+    redirect("/team?error=access_review");
+  }
+  redirect(`/team?success=${decision === "approve" ? "access_approved" : "access_rejected"}`);
+}
 
 export async function inviteMember(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_members")) redirect("/team?error=forbidden");
 
   const parsedEmail = emailSchema.safeParse(String(formData.get("email") ?? "").toLowerCase());
@@ -63,7 +90,7 @@ export async function inviteMember(formData: FormData): Promise<void> {
 export async function changeMemberRole(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_members")) redirect("/team?error=forbidden");
 
   const targetUserId = String(formData.get("userId") ?? "");
@@ -89,7 +116,7 @@ export async function changeMemberRole(formData: FormData): Promise<void> {
 export async function removeMember(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_members")) redirect("/team?error=forbidden");
 
   const targetUserId = String(formData.get("userId") ?? "");

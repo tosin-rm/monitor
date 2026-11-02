@@ -19,7 +19,7 @@ export default function ClientsPage(props: { searchParams: Promise<{ q?: string;
 async function ClientsContent({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const { q = "", error, success, status: rawStatus } = await searchParams;
   const query = q.trim().slice(0, 100);
   const status = parseLifecycleFilter(rawStatus);

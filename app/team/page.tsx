@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { Activity, ArrowLeft, MailPlus, Shield, UserRound, Users } from "lucide-react";
-import { changeMemberRole, inviteMember, removeMember } from "@/app/team/actions";
+import { Activity, ArrowLeft, Check, MailPlus, Shield, UserCheck, UserRound, Users, X } from "lucide-react";
+import { changeMemberRole, inviteMember, removeMember, reviewWorkspaceAccess } from "@/app/team/actions";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
 import { can, MEMBER_ROLES, parseRole } from "@/lib/auth/roles";
 import { getRequestAuthContext } from "@/lib/auth/session";
@@ -28,7 +28,7 @@ async function TeamContent({
 }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
 
   const admin = createAdminClient();
   const { error, success } = await searchParams;
@@ -45,6 +45,7 @@ async function TeamContent({
   }
 
   let invitations: Array<{ id: string; email: string; role: string; expires_at: string }> = [];
+  let accessRequests: Array<{ id: string; email: string; created_at: string }> = [];
   let auditActivity: Array<{
     id: string;
     actor_user_id: string | null;
@@ -54,15 +55,17 @@ async function TeamContent({
     created_at: string;
   }> = [];
   if (manageable) {
-    const [invitationsResult, activityResult] = await Promise.all([
+    const [invitationsResult, accessRequestsResult, activityResult] = await Promise.all([
       admin.from("invitations").select("id, email, role, expires_at").eq("organization_id", context.organizationId).is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }),
+      admin.from("workspace_access_requests").select("id, email, created_at").eq("organization_id", context.organizationId).eq("status", "pending").order("created_at", { ascending: true }),
       admin.from("audit_logs").select("id, actor_user_id, action, entity_type, metadata, created_at").eq("organization_id", context.organizationId).order("created_at", { ascending: false }).limit(10),
     ]);
-    if (invitationsResult.error || activityResult.error) {
-      console.error("Team administration query failed", [invitationsResult.error?.code, activityResult.error?.code].filter(Boolean));
+    if (invitationsResult.error || accessRequestsResult.error || activityResult.error) {
+      console.error("Team administration query failed", [invitationsResult.error?.code, accessRequestsResult.error?.code, activityResult.error?.code].filter(Boolean));
       throw new Error("Team administration information could not be loaded.");
     }
     invitations = invitationsResult.data ?? [];
+    accessRequests = accessRequestsResult.data ?? [];
     auditActivity = (activityResult.data ?? []).map((entry) => ({
       ...entry,
       metadata: entry.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
@@ -133,6 +136,37 @@ async function TeamContent({
 
           <div className="space-y-5">
             {manageable && (
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                  <div><h2 className="text-sm font-bold text-slate-900">Access requests</h2><p className="mt-0.5 text-[11px] text-slate-400">{accessRequests.length} awaiting review</p></div>
+                  <UserCheck size={16} className="text-slate-400" />
+                </div>
+                {accessRequests.length ? (
+                  <div className="divide-y divide-slate-100">
+                    {accessRequests.map((request) => (
+                      <div key={request.id} className="px-5 py-3">
+                        <p className="truncate text-xs font-semibold text-slate-700">{request.email}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">Requested {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(request.created_at))}</p>
+                        <div className="mt-3 flex gap-2">
+                          <form action={reviewWorkspaceAccess}>
+                            <input type="hidden" name="requestId" value={request.id} />
+                            <input type="hidden" name="decision" value="approve" />
+                            <button type="submit" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 text-[11px] font-semibold text-white hover:bg-emerald-700"><Check size={13} /> Approve</button>
+                          </form>
+                          <form action={reviewWorkspaceAccess}>
+                            <input type="hidden" name="requestId" value={request.id} />
+                            <input type="hidden" name="decision" value="reject" />
+                            <button type="submit" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"><X size={13} /> Reject</button>
+                          </form>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="px-5 py-6 text-xs text-slate-400">No access requests are waiting for review.</p>}
+              </section>
+            )}
+
+            {manageable && (
               <section className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="flex items-center gap-2"><MailPlus size={16} className="text-red-600" /><h2 className="text-sm font-bold text-slate-900">Invite a teammate</h2></div>
                 <p className="mt-1 text-[11px] leading-5 text-slate-400">They will receive a secure email invitation to set up their account.</p>
@@ -194,10 +228,13 @@ function teamErrorMessage(error: string): string {
   if (error === "invite-rate-limit") return "Supabase's email sending limit has been reached. No invitation email was sent. Wait for the limit to reset before retrying, or configure a verified SMTP provider.";
   if (error === "invite") return "Invitation email could not be sent. Check Supabase Auth email configuration and the address.";
   if (error === "record_invite") return "The email was invited, but workspace access could not be recorded. Please contact an owner.";
+  if (error === "access_review") return "This access request could not be reviewed. It may have already been handled; refresh the page and try again.";
   return "The requested team update could not be completed. Confirm that at least one owner remains.";
 }
 
 function teamSuccessMessage(success: string): string {
+  if (success === "access_approved") return "The account was approved as a Member and can now access the workspace.";
+  if (success === "access_rejected") return "The access request was rejected.";
   if (success === "invited") return "Invitation sent. The teammate can set a password from the invitation email.";
   if (success === "removed") return "Team member access has been removed.";
   return "Team member role has been updated.";

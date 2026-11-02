@@ -19,7 +19,7 @@ export default function WebsitesPage(props: { searchParams: Promise<{ q?: string
 async function WebsitesContent({ searchParams }: { searchParams: Promise<{ q?: string; client?: string; status?: string; error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const params = await searchParams;
   const search = (params.q ?? "").trim().slice(0, 100);
   const clientFilter = params.client ?? "";

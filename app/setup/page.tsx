@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { Activity, ShieldCheck } from "lucide-react";
+import { Activity } from "lucide-react";
 import { bootstrapOrganization } from "@/app/setup/actions";
 import { getRequestAuthContext } from "@/lib/auth/session";
 import { bootstrapOwnerEmail } from "@/lib/env";
@@ -30,6 +30,7 @@ async function SetupContent({
 
   const configuredOwner = bootstrapOwnerEmail();
   const isBootstrapOwner = Boolean(configuredOwner && context.email.toLowerCase() === configuredOwner);
+  if (!isBootstrapOwner) redirect("/access-pending");
   let bootstrapAvailable = false;
   if (isBootstrapOwner) {
     const admin = createAdminClient();
@@ -40,6 +41,7 @@ async function SetupContent({
     }
     bootstrapAvailable = count === 0;
   }
+  if (!bootstrapAvailable) redirect("/access-pending");
 
   const { error } = await searchParams;
   return (
@@ -47,8 +49,7 @@ async function SetupContent({
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white"><Activity size={21} /></div>
         <h1 className="mt-5 text-xl font-bold tracking-tight text-slate-950">Workspace access</h1>
-        {bootstrapAvailable ? (
-          <>
+        <>
             <p className="mt-2 text-sm leading-6 text-slate-500">Create the first organization for this private Monitor instance. This one-time setup is restricted to the configured bootstrap owner.</p>
             {error && (
               <p role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-800">
@@ -71,23 +72,7 @@ async function SetupContent({
               </div>
               <button type="submit" className="h-11 w-full rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700">Create workspace</button>
             </form>
-          </>
-        ) : (
-          <>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Your account is not yet attached to a workspace. New accounts can join after the workspace has been created and enabled for signups.
-            </p>
-            {error === "workspace" && (
-              <p role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-800">
-                Workspace membership could not be assigned. The workspace may not be ready yet; contact the workspace administrator.
-              </p>
-            )}
-            <div className="mt-6 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <ShieldCheck size={17} className="mt-0.5 shrink-0 text-slate-500" />
-              <p className="text-xs leading-5 text-slate-600">All self-registered accounts receive Member permissions. Owners and administrators must be assigned through authorized administration.</p>
-            </div>
-          </>
-        )}
+        </>
       </div>
     </main>
   );

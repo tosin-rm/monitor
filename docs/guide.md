@@ -66,7 +66,7 @@ Before production use, operators still need to apply and verify the migrations a
 
 ### Sign-in and roles
 
-Team-member signup is open after the Owner has created the workspace and the operator enables new-user signup in Supabase Auth. Every self-registered account joins the single existing workspace as a **Member**; the signup form cannot select an organization or role. There is no separate “developer” role:
+After the Owner creates the workspace, an operator can enable self-signup in Supabase Auth. New accounts must request access and remain unable to see workspace data until an Owner/Admin approves them as a **Member**. The signup form cannot select an organization or role. There is no separate “developer” role:
 
 - **Member:** view operational records and confirm renewals.
 - **Admin:** manage clients, websites, assets, monitoring, notification settings, and team membership.
@@ -74,7 +74,7 @@ Team-member signup is open after the Owner has created the workspace and the ope
 
 Owners/Admins remain restricted assignments made through trusted administration; signing up never grants elevated privileges. Developers who need to change or deploy the software also need access to the source-code repository and deployment environment. That is separate from Monitor account access; being a repository developer does not automatically grant dashboard access or Supabase production credentials.
 
-Because signup is public, anyone who can complete Supabase Auth signup can view the team's operational data as a Member. Enable it only if that is acceptable for this workspace. Do not put production client data in the workspace before the team has reviewed this access model.
+Because signup is public, anyone can create an account and request access. Owners/Admins should verify each person's identity before approval; an unapproved account cannot view workspace data.
 
 #### First owner setup: novice step-by-step
 
@@ -119,7 +119,7 @@ This section assumes you are setting up a new Monitor installation. It separates
    ```
 
    The Site URL must be the Monitor website origin from Part A, step 6, and the `/auth/callback` URL must be in Supabase's allowed redirect list. After changing a template, send a fresh invite and use that newest email link only once. Old invitation links cannot be reused after verification or expiry.
-8. **Apply the database migration files.** Open the project files in the repository and locate `supabase/migrations/`. In the Supabase dashboard, open **SQL Editor → New query**. Open `0001_foundation.sql` in your code editor, copy its contents into the SQL Editor, check that the correct Supabase project is selected, and run it. Repeat, one file at a time and in this order: `0002_private_auth.sql`, `0003_notification_outbox.sql`, `0004_incident_workflow.sql`, then `0005_open_signup_membership.sql`. Keep public signup disabled until the workspace and Owner are set up below. Wait for each file to finish successfully before running the next. If a file reports an error, stop and ask a developer to investigate; do not skip ahead or repeatedly run it without understanding the error. Never run these files against a project containing data unless a database operator has reviewed the migration and backup plan.
+8. **Apply the database migration files.** Open the project files in the repository and locate `supabase/migrations/`. Apply every migration in filename order, including `0015_workspace_access_approval.sql`, using the Supabase CLI migration workflow or the SQL Editor after reviewing the target project. Keep public signup disabled until the workspace and Owner are set up below. Wait for each file to finish successfully before running the next. If a file reports an error, stop and ask a developer to investigate; do not skip ahead or repeatedly run it without understanding the error. Never run these files against a project containing data unless a database operator has reviewed the migration and backup plan.
 9. **Keep public sign-up disabled during initial setup.** In Supabase, open **Authentication → Settings** (sometimes shown as **Sign In / Providers**). Leave **Allow new users to sign up** turned off until the workspace exists and the Owner has confirmed access. This avoids creating accounts that cannot yet join a workspace.
 10. **Redeploy after setting environment values.** In your hosting platform, redeploy/restart the dashboard so it starts with the new settings. Open the dashboard address in a browser. Seeing the Monitor sign-in page is a good initial check; the workspace is not created yet.
 11. **Check email invitations are enabled.** Supabase must be able to send Auth invitation emails. For a real team, configure Supabase's approved SMTP/email provider and sender. A project's default email service may have strict sending limits; do not assume invitations will reach the inbox until you test one.
@@ -155,13 +155,13 @@ This first-owner bootstrap only works for the configured, signed-in `BOOTSTRAP_O
 
 ##### Part C — give the developer and team their own access
 
-16. **Enable member self-signup once the workspace is ready.** In Supabase Auth, enable **Allow new users to sign up** and configure a verified SMTP provider for reliable confirmation emails. Deploy the app containing `/signup`. Rate-limited signup emails require waiting for the Auth email limit to clear or using the configured SMTP provider; do not repeatedly submit the form.
-17. **Teammates create their own accounts.** They visit `/signup`, enter their work email and a password, then confirm their email. Their account joins the existing workspace as a Member; they cannot choose another role during signup. Test with a separate account and verify that it cannot manage team roles.
-18. **Grant elevated roles only through trusted administration.** An Owner can promote a Member to Admin from **Team**. Do not share the Owner's login. Owners/Admins remain responsible for reviewing who should have access because any person able to sign up can see the workspace's operational data as a Member.
+16. **Enable approval-based self-signup once the workspace is ready.** In Supabase Auth, enable **Allow new users to sign up** and disable **Confirm email** (also called **Enable email confirmations**) so signup creates a session without sending a verification email. Deploy the app containing `/signup`. If email confirmation remains enabled, signup cannot complete immediately; the app will show a configuration error. SMTP is still needed for invitations and password recovery if those email flows are used.
+17. **Teammates request access.** They visit `/signup`, create an account with their work email and password, and land on a pending-access page. The account cannot see workspace records or use protected actions until an Owner/Admin approves it from **Team → Access requests**. Approval grants Member access only; the signup form cannot choose a role or organization. Rejected users can submit a new request.
+18. **Grant elevated roles only through trusted administration.** An Owner can promote a Member to Admin from **Team**. Do not share the Owner's login. Owners/Admins are responsible for confirming each requester's identity before approval.
 19. **Give developers separate technical access if needed.** If a developer needs to edit or deploy the source code, grant access to the code repository and deployment platform separately. Dashboard Admin access does not automatically require production database keys. Share only the minimum access needed for their task.
 20. **Add real operational data only after access works.** The team can now create a client, add that client's websites, and add domain/hosting/certificate records. Record only expiry dates that have been verified. Configure notification delivery and the background jobs/worker before relying on automated alerts.
 
-**Stop here if you only added an email to `BOOTSTRAP_OWNER_EMAIL`.** That setting just identifies the eligible first Owner. It does not create a Supabase user, send an invitation, or create the workspace. Complete Part A and invite that same email from Supabase before the person tries to create the workspace.
+**Stop here if you only added an email to `BOOTSTRAP_OWNER_EMAIL`.** That setting just identifies the eligible first Owner. It does not create a Supabase user, send an invitation, or create the workspace. Complete Part A and create or invite that same email in Supabase before the person tries to create the workspace.
 
 The first-owner setup only works once, for the configured, signed-in email, and only while the database has no organization. It is not the normal process for adding people later.
 

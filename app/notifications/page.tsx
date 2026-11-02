@@ -17,7 +17,7 @@ export default function NotificationsPage(props: { searchParams: Promise<{ error
 async function NotificationsContent({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const { error, success } = await searchParams;
   const supabase = await createClient();
   const { data: notifications, error: queryError } = await supabase

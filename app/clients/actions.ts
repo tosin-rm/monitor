@@ -30,7 +30,7 @@ function readClientForm(formData: FormData) {
 export async function createClientRecord(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_clients")) redirect("/clients?error=forbidden");
   const parsed = readClientForm(formData);
   if (!parsed.success) redirect("/clients?error=invalid");
@@ -58,7 +58,7 @@ export async function createClientRecord(formData: FormData): Promise<void> {
 export async function updateClientRecord(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_clients")) redirect("/clients?error=forbidden");
   const clientId = String(formData.get("clientId") ?? "");
   const parsed = readClientForm(formData);
@@ -88,7 +88,7 @@ export async function updateClientRecord(formData: FormData): Promise<void> {
 export async function updateClientLifecycle(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_clients")) redirect("/clients?error=forbidden");
   const clientId = String(formData.get("clientId") ?? "");
   const status = String(formData.get("status") ?? "");

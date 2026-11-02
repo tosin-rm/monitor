@@ -17,7 +17,7 @@ export default function IncidentsPage(props: { searchParams: Promise<{ error?: s
 async function IncidentsContent({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const params = await searchParams;
   const supabase = await createClient();
   const { data, error } = await supabase

@@ -20,7 +20,7 @@ export default function ClientDetailPage(props: { params: Promise<{ clientId: st
 async function ClientDetailContent({ params, searchParams }: { params: Promise<{ clientId: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const [{ clientId }, query] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
   const [clientResult, websitesResult] = await Promise.all([

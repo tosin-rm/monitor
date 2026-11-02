@@ -2,8 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { appBaseUrl } from "@/lib/env";
-import { ensureDefaultWorkspaceMembership } from "@/lib/auth/workspace-membership";
+import { appBaseUrl, bootstrapOwnerEmail } from "@/lib/env";
+import { hasWorkspaceMembership } from "@/lib/auth/workspace-membership";
 import { classifyPasswordResetError } from "@/lib/auth/password-reset-error";
 import { classifySignupError } from "@/lib/auth/signup-error";
 import { createClient } from "@/lib/supabase/server";
@@ -24,9 +24,8 @@ export async function signIn(formData: FormData): Promise<void> {
     console.error("Sign-in failed", { code: error.code ?? "auth_error" });
     redirect("/login?error=credentials");
   }
-  if (!(await ensureDefaultWorkspaceMembership(supabase))) {
-    redirect("/setup?error=workspace");
-  }
+  if (email === bootstrapOwnerEmail()) redirect("/setup");
+  if (!(await hasWorkspaceMembership(supabase))) redirect("/access-pending");
   redirect("/");
 }
 
@@ -55,12 +54,17 @@ export async function signUp(formData: FormData): Promise<void> {
     redirect(`/signup?error=${classifySignupError(error)}`);
   }
   if (data.session) {
-    if (!(await ensureDefaultWorkspaceMembership(supabase))) {
-      redirect("/setup?error=workspace");
+    if (parsed.data.email === bootstrapOwnerEmail()) redirect("/setup");
+    const { data: accessStatus, error: requestError } = await supabase.rpc(
+      "submit_workspace_access_request",
+    );
+    if (requestError) {
+      console.error("Workspace access request failed", { code: requestError.code });
+      redirect("/access-pending?error=request");
     }
-    redirect("/");
+    redirect(accessStatus === "approved" ? "/" : "/access-pending?submitted=1");
   }
-  redirect("/signup?sent=1");
+  redirect("/signup?error=verification-required");
 }
 
 export async function requestPasswordReset(formData: FormData): Promise<void> {

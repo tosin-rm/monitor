@@ -40,7 +40,7 @@ export default function InventoryPage(props: { searchParams: Promise<Query> }) {
 async function InventoryContent({ searchParams }: { searchParams: Promise<Query> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const filters = await searchParams;
   const supabase = await createClient();
   const today = calendarDateInTimeZone(new Date(), context.timeZone);

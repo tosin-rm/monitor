@@ -31,7 +31,7 @@ const emailsSchema = z.array(z.string().email().max(254)).max(30);
 export async function updateNotificationSettings(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_notifications")) redirect("/settings?error=forbidden");
 
   const emails = String(formData.get("emailRecipients") ?? "")
@@ -81,7 +81,7 @@ export async function updateNotificationSettings(formData: FormData): Promise<vo
 export async function queueChannelTest(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_notifications")) redirect("/settings?error=forbidden");
 
   const channel = String(formData.get("channel") ?? "") as NotificationChannelName;
@@ -144,7 +144,7 @@ export async function queueChannelTest(formData: FormData): Promise<void> {
 export async function retryNotification(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "retry_notifications")) redirect("/notifications?error=forbidden");
   const notificationId = z.string().uuid().safeParse(String(formData.get("notificationId") ?? ""));
   if (!notificationId.success) redirect("/notifications?error=invalid");
@@ -164,7 +164,7 @@ export async function retryNotification(formData: FormData): Promise<void> {
 export async function unlinkTelegramChat(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_notifications")) redirect("/settings?error=forbidden");
   const chatId = String(formData.get("chatId") ?? "");
   if (!/^-?[0-9]{1,32}$/.test(chatId)) redirect("/settings?error=invalid");

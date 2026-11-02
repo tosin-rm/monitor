@@ -46,7 +46,7 @@ const endpointSchema = z.object({
 async function requireManager(permission: "manage_websites" | "manage_assets" | "manage_monitoring") {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, permission)) redirect("/?error=forbidden");
   return context;
 }
@@ -318,7 +318,7 @@ export async function archiveAsset(formData: FormData): Promise<void> {
 export async function confirmRenewal(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "confirm_renewals")) redirect("/inventory?error=forbidden");
   const assetId = String(formData.get("assetId") ?? "");
   const websiteId = String(formData.get("websiteId") ?? "");

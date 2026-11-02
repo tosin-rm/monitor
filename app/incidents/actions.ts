@@ -11,7 +11,7 @@ const incidentStatus = z.enum(["acknowledged", "investigating", "resolved"]);
 export async function changeIncidentStatus(formData: FormData): Promise<void> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
 
   const id = z.string().uuid().safeParse(String(formData.get("incidentId") ?? ""));
   const status = incidentStatus.safeParse(String(formData.get("status") ?? ""));

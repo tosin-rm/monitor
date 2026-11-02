@@ -31,7 +31,7 @@ export async function sendMonthlyReport(formData: FormData): Promise<void> {
   const reportPath = `/websites/${websiteId}/report?month=${encodeURIComponent(month)}`;
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   if (!can(context.role, "manage_websites")) redirect(`${reportPath}&emailError=forbidden`);
   if (!z.string().uuid().safeParse(websiteId).success || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     redirect("/websites?error=invalid");

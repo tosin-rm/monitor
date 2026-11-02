@@ -36,7 +36,7 @@ export default function WebsiteDetailPage(props: { params: Promise<{ websiteId: 
 async function WebsiteDetailContent({ params, searchParams }: { params: Promise<{ websiteId: string }>; searchParams: Promise<{ error?: string; success?: string; device?: string }> }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const [{ websiteId }, paramsResult] = await Promise.all([params, searchParams]);
   const selectedDevice = paramsResult.device === "desktop" ? "desktop" : "mobile";
   const supabase = await createClient();

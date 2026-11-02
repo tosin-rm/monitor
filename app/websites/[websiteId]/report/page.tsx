@@ -39,7 +39,7 @@ async function WebsiteReportContent(props: {
 }) {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const [{ websiteId }, params] = await Promise.all([props.params, props.searchParams]);
   const defaultMonth = currentMonth(new Date(), context.timeZone);
   const selectedMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month ?? "") ? params.month! : defaultMonth;

@@ -16,7 +16,7 @@ export default function CalendarPage() {
 async function CalendarContent() {
   const context = await getRequestAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   const today = calendarDateInTimeZone(new Date(), context.timeZone);
   const historyStart = new Date(`${today}T00:00:00Z`);
   historyStart.setUTCDate(historyStart.getUTCDate() - 30);

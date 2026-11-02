@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { classifyAuthCallbackError } from "@/lib/auth/callback-error";
-import { appBaseUrl } from "@/lib/env";
-import { ensureDefaultWorkspaceMembership } from "@/lib/auth/workspace-membership";
+import { appBaseUrl, bootstrapOwnerEmail } from "@/lib/env";
+import { hasWorkspaceMembership } from "@/lib/auth/workspace-membership";
 import { createClient } from "@/lib/supabase/server";
 
 function safeNextPath(value: string | null): string {
@@ -63,8 +63,26 @@ export async function GET(request: NextRequest) {
   if (isPasswordRecovery) {
     return NextResponse.redirect(new URL("/reset-password", baseUrl));
   }
-  if (!(await ensureDefaultWorkspaceMembership(supabase))) {
-    return NextResponse.redirect(new URL("/setup?error=workspace", baseUrl));
+  if (type === "signup") {
+    const { data: { user } } = await supabase.auth.getUser();
+    const configuredOwner = bootstrapOwnerEmail();
+    if (configuredOwner && user?.email?.toLowerCase() === configuredOwner) {
+      return NextResponse.redirect(new URL("/setup", baseUrl));
+    }
+    const { data: accessStatus, error } = await supabase.rpc(
+      "submit_workspace_access_request",
+    );
+    if (error) {
+      console.error("Workspace access request failed after signup confirmation", {
+        code: error.code,
+      });
+      return NextResponse.redirect(new URL("/access-pending?error=request", baseUrl));
+    }
+    return NextResponse.redirect(
+      new URL(accessStatus === "approved" ? "/" : "/access-pending", baseUrl),
+    );
   }
+  if (!(await hasWorkspaceMembership(supabase)))
+    return NextResponse.redirect(new URL("/access-pending", baseUrl));
   return NextResponse.redirect(new URL(next, baseUrl));
 }

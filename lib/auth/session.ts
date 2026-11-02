@@ -65,7 +65,7 @@ export async function getRequestAuthContext(): Promise<AuthContext | null> {
 export async function requireAuth(): Promise<AuthContext> {
   const context = await getAuthContext();
   if (!context) redirect("/login");
-  if (!context.organizationId) redirect("/setup");
+  if (!context.organizationId) redirect("/access-pending");
   return context;
 }
 

@@ -8,6 +8,7 @@ import { PasswordInput } from "@/app/_components/password-input";
 import { InvitationFragmentHandler } from "@/app/login/invitation-fragment-handler";
 import { getRequestAuthContext } from "@/lib/auth/session";
 import { canUseDevPreview } from "@/lib/auth/dev-preview";
+import { bootstrapOwnerEmail } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -27,7 +28,15 @@ async function LoginContent({
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const context = await getRequestAuthContext();
-  if (context) redirect(context.organizationId ? "/" : "/setup");
+  if (context) {
+    redirect(
+      context.organizationId
+        ? "/"
+        : context.email.toLowerCase() === bootstrapOwnerEmail()
+          ? "/setup"
+          : "/access-pending",
+    );
+  }
   const { error, success } = await searchParams;
 
   return (
