@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, CalendarClock, ExternalLink, Search, ShieldCheck } from "lucide-react";
 import { ConfirmSubmit } from "@/app/_components/confirm-submit";
 import { AssetFields } from "@/app/_components/record-fields";
+import { assetDateSourceLabel } from "@/lib/assets/date-source";
 import { archiveAsset, confirmRenewal, updateAsset } from "@/app/websites/actions";
 import { can } from "@/lib/auth/roles";
 import { calendarDateInTimeZone, calendarDaysRemaining, calendarMonthBeforeDate } from "@/lib/expiry/calendar-days";
@@ -125,8 +126,8 @@ async function InventoryContent({ searchParams }: { searchParams: Promise<Query>
                 <span className="text-slate-400">Expiry</span><strong className={`font-semibold ${days !== null && days < 0 ? "text-red-700" : days !== null && days <= 14 ? "text-amber-700" : "text-slate-700"}`}>{asset.expiry_date ? `${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(`${asset.expiry_date}T12:00:00Z`))}${days! < 0 ? ` · ${Math.abs(days!)}d overdue` : ` · ${days}d`}` : "Unknown"}</strong>
                 <span className="text-slate-400">Reminder date (1 month before)</span><strong className="font-semibold text-slate-700">{asset.expiry_date && asset.renewal_status !== "cancelled" ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${calendarMonthBeforeDate(asset.expiry_date)}T12:00:00Z`)) : "Not scheduled"}</strong>
                 <span className="text-slate-400">Renewal status</span><strong className="font-semibold capitalize text-slate-700">{asset.renewal_status.replaceAll("_", " ")}</strong>
-                <span className="text-slate-400">Date source / confidence</span><strong className="font-semibold capitalize text-slate-700">{asset.date_source} / {asset.date_confidence ?? "unknown"}</strong>
-                <span className="text-slate-400">Last verified</span><strong className="font-semibold text-slate-700">{asset.last_verified_at ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(asset.last_verified_at)) : "Not verified"}</strong>
+                <span className="text-slate-400">Date source / confidence</span><strong className="font-semibold capitalize text-slate-700">{assetDateSourceLabel(asset.date_source)} / {asset.date_confidence ?? "unknown"}</strong>
+                <span className="text-slate-400">{asset.date_source === "manual" ? "Last verified" : "Last lookup"}</span><strong className="font-semibold text-slate-700">{asset.last_verified_at ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(asset.last_verified_at)) : asset.date_source === "manual" ? "Not verified" : "Not looked up"}</strong>
                 <span className="text-slate-400">Last check attempt</span><strong className="font-semibold text-slate-700">{asset.last_checked_at ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: context.timeZone }).format(new Date(asset.last_checked_at)) : "Not checked"}</strong>
               </div>
               {asset.renewal_url && <a href={asset.renewal_url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-red-700 hover:underline">Renew <ExternalLink size={11} /></a>}

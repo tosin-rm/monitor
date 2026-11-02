@@ -33,9 +33,18 @@ export async function lookupDomainExpiry(options: {
   const retrievedAt = (options.now ?? new Date()).toISOString();
   const domain = normalizeDomain(options.domain);
   try {
-    const bootstrap =
-      options.bootstrap ??
-      ((await options.fetchImpl(IANA_BOOTSTRAP)).json as RdapBootstrap);
+    let bootstrap = options.bootstrap;
+    if (!bootstrap) {
+      const response = await options.fetchImpl(IANA_BOOTSTRAP);
+      if (response.status < 200 || response.status >= 300) {
+        return { status: "network_failure", expiryDate: null, retrievedAt, confidence: "none" };
+      }
+      const payload = response.json as Partial<RdapBootstrap> | null;
+      if (!payload || !Array.isArray(payload.services)) {
+        return { status: "invalid_response", expiryDate: null, retrievedAt, confidence: "none" };
+      }
+      bootstrap = payload as RdapBootstrap;
+    }
     const base = rdapBaseFor(domain, bootstrap);
     if (!base) {
       return { status: "unsupported", expiryDate: null, retrievedAt, confidence: "none" };

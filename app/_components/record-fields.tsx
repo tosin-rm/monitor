@@ -1,4 +1,5 @@
 import { lifecycleLabel, type LifecycleStatus } from "@/lib/lifecycle/status";
+import { AssetExpiryFields } from "@/app/_components/asset-expiry-fields";
 
 export function ClientFields({ client }: {
   client?: {
@@ -55,20 +56,18 @@ export function AssetFields({ asset, idPrefix = "asset" }: {
     renewal_responsibility: string | null;
     renewal_status: string;
     last_verified_at: string | null;
+    date_source: string;
   };
   idPrefix?: string;
 }) {
   return <>
-    <div><label htmlFor={`${idPrefix}-type`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Service type</label><select id={`${idPrefix}-type`} name="assetType" defaultValue={asset?.asset_type ?? "domain"} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs">{[["domain", "Domain"], ["hosting", "Hosting"], ["ssl_certificate", "SSL certificate"], ["other", "Other"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+    <AssetExpiryFields idPrefix={idPrefix} assetType={asset?.asset_type ?? "domain"} hostname={asset?.hostname ?? null} expiryDate={asset?.expiry_date ?? null} dateSource={asset?.date_source} lastVerified={Boolean(asset?.last_verified_at)} />
     <div><label htmlFor={`${idPrefix}-service`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Service name</label><input id={`${idPrefix}-service`} name="serviceName" defaultValue={asset?.service_name ?? ""} maxLength={200} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" placeholder="Primary domain" /></div>
-    <div><label htmlFor={`${idPrefix}-hostname`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Domain or hostname</label><input id={`${idPrefix}-hostname`} name="hostname" defaultValue={asset?.hostname ?? ""} maxLength={253} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" placeholder="example.com" /></div>
     <div><label htmlFor={`${idPrefix}-provider`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Provider</label><input id={`${idPrefix}-provider`} name="providerName" defaultValue={asset?.provider_name ?? ""} maxLength={160} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" placeholder="Registrar or hosting provider" /></div>
     <div><label htmlFor={`${idPrefix}-account`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Provider account reference</label><input id={`${idPrefix}-account`} name="providerAccountReference" defaultValue={asset?.provider_account_reference ?? ""} maxLength={200} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" /></div>
-    <div><label htmlFor={`${idPrefix}-expiry`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Expiry date (domain, hosting, SSL)</label><input id={`${idPrefix}-expiry`} name="expiryDate" type="date" defaultValue={asset?.expiry_date ?? ""} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" /></div>
     <div><label htmlFor={`${idPrefix}-renewal-url`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Renewal URL</label><input id={`${idPrefix}-renewal-url`} name="renewalUrl" type="url" defaultValue={asset?.renewal_url ?? ""} maxLength={2048} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" placeholder="https://provider.example/renew" /></div>
     <div><label htmlFor={`${idPrefix}-responsibility`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Renewal responsibility</label><input id={`${idPrefix}-responsibility`} name="renewalResponsibility" defaultValue={asset?.renewal_responsibility ?? ""} maxLength={160} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs" placeholder="Team member or client" /></div>
     <div><label htmlFor={`${idPrefix}-status`} className="mb-1.5 block text-[11px] font-semibold text-slate-700">Renewal status</label><select id={`${idPrefix}-status`} name="renewalStatus" defaultValue={asset?.renewal_status ?? "unknown"} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs">{["active", "renewal_pending", "renewed", "expired", "cancelled", "unknown"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
-    <label className="flex items-center gap-2 text-[10px] text-slate-600 sm:col-span-2"><input type="checkbox" name="verified" defaultChecked={Boolean(asset?.last_verified_at)} className="rounded border-slate-300 text-red-600 focus:ring-red-500" /> I have verified the manually entered expiry date with the provider.</label>
-    <p className="text-[10px] leading-4 text-slate-400 sm:col-span-2">Set a separate expiry date for each domain, hosting plan, or SSL certificate. Hosting dates are entered manually, and reminders follow the service type.</p>
+    <p className="text-[10px] leading-4 text-slate-400 sm:col-span-2">Set a separate expiry date for each domain, hosting plan, or SSL certificate. Domain dates can be suggested by RDAP, and SSL dates come from a live certificate check. Hosting renewal dates remain manual because providers require separate account-specific integrations.</p>
   </>;
 }

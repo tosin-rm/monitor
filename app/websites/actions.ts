@@ -6,6 +6,9 @@ import { can } from "@/lib/auth/roles";
 import { getAuthContext } from "@/lib/auth/session";
 import { LIFECYCLE_STATUSES } from "@/lib/lifecycle/status";
 import { checkWebsitePerformance } from "@/lib/health/pagespeed";
+import { lookupDomainExpiry } from "@/lib/rdap/client";
+import { safeRdapFetch } from "@/lib/rdap/safe-fetch";
+import { inspectCertificate } from "@/lib/ssl/inspect";
 import { normalizeDomain, normalizeHttpUrl } from "@/lib/urls";
 import { parsePublicHttpUrl } from "@/lib/ssrf/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -229,8 +232,15 @@ function readAssetForm(formData: FormData, existing?: {
   }
   const expiryDate = parsed.data.expiryDate || null;
   const verified = String(formData.get("verified") ?? "") === "on";
+  const requestedSource = String(formData.get("expirySource") ?? "manual");
+  const sourceIsValid = requestedSource === "rdap" && parsed.data.assetType === "domain"
+    || requestedSource === "certificate_inspection" && parsed.data.assetType === "ssl_certificate"
+    || requestedSource === "manual";
+  if (!sourceIsValid) return null;
+  const dateSource = expiryDate ? requestedSource : "unknown";
   const dateUnchanged = existing !== undefined && existing.expiry_date === expiryDate;
-  const updateDateMetadata = !dateUnchanged || verified;
+  const sourceUnchanged = existing !== undefined && existing.date_source === dateSource;
+  const updateDateMetadata = !dateUnchanged || !sourceUnchanged || verified;
   return {
     website_id: parsed.data.websiteId,
     asset_type: parsed.data.assetType,
@@ -242,14 +252,14 @@ function readAssetForm(formData: FormData, existing?: {
     renewal_url: parsed.data.renewalUrl || null,
     renewal_responsibility: parsed.data.renewalResponsibility,
     renewal_status: parsed.data.renewalStatus,
-    date_source: updateDateMetadata ? (expiryDate ? "manual" : "unknown") : existing.date_source,
+    date_source: updateDateMetadata ? dateSource : existing.date_source,
     date_confidence: updateDateMetadata
-      ? (expiryDate ? (verified ? "high" : "medium") : "none")
+      ? (expiryDate ? (dateSource === "manual" ? (verified ? "high" : "medium") : "medium") : "none")
       : existing.date_confidence,
-    manual_override: updateDateMetadata ? Boolean(expiryDate) : existing.manual_override,
-    last_verified_at: expiryDate && verified
+    manual_override: updateDateMetadata ? Boolean(expiryDate && dateSource === "manual") : existing.manual_override,
+    last_verified_at: expiryDate && (verified || dateSource !== "manual")
       ? new Date().toISOString()
-      : dateUnchanged
+      : dateUnchanged && sourceUnchanged
         ? existing.last_verified_at
         : null,
   };
@@ -270,6 +280,67 @@ export async function createAsset(formData: FormData): Promise<void> {
     redirect(`/websites/${websiteId}?error=asset`);
   }
   redirect(`/websites/${websiteId}?success=asset`);
+}
+
+export async function lookupAssetExpiry(assetType: string, hostname: string): Promise<{
+  success: boolean;
+  expiryDate?: string;
+  source?: "rdap" | "certificate_inspection";
+  message: string;
+}> {
+  await requireManager("manage_assets");
+  const parsedHostname = z.string().trim().min(1).max(253).safeParse(hostname);
+  if (!parsedHostname.success) {
+    return { success: false, message: "Enter a valid domain or hostname first." };
+  }
+
+  if (assetType === "domain") {
+    let domain: string;
+    try {
+      domain = normalizeDomain(parsedHostname.data);
+    } catch {
+      return { success: false, message: "Enter a valid domain name." };
+    }
+    const result = await lookupDomainExpiry({ domain, fetchImpl: safeRdapFetch });
+    if (result.status !== "ok" || !result.expiryDate) {
+      const messages = {
+        ok: "The domain registry did not return a usable expiry date.",
+        missing_expiry: "The domain registry did not publish an expiry date.",
+        unsupported: "No RDAP registry is available for this domain.",
+        rate_limited: "The domain registry is temporarily rate-limiting lookups. Try again later.",
+        invalid_response: "The domain registry returned an invalid response.",
+        network_failure: "The domain registry could not be reached. Try again later.",
+        not_found: "The domain was not found in the registry.",
+      } as const;
+      return { success: false, message: messages[result.status] };
+    }
+    return {
+      success: true,
+      expiryDate: result.expiryDate,
+      source: "rdap",
+      message: "RDAP found an expiry date. Review it before saving.",
+    };
+  }
+
+  if (assetType === "ssl_certificate") {
+    const inspection = await inspectCertificate({ hostname: parsedHostname.data });
+    if (!inspection.validTo) {
+      return {
+        success: false,
+        message: inspection.sanitizedError ?? "A certificate expiry date could not be read.",
+      };
+    }
+    return {
+      success: true,
+      expiryDate: inspection.validTo.slice(0, 10),
+      source: "certificate_inspection",
+      message: inspection.success
+        ? "The live certificate expiry was found. Review it before saving."
+        : `Expiry found, but the certificate has an issue: ${inspection.sanitizedError ?? "inspection incomplete"}. Review it before saving.`,
+    };
+  }
+
+  return { success: false, message: "Automatic lookup is available for domain and SSL certificate assets only." };
 }
 
 export async function updateAsset(formData: FormData): Promise<void> {
